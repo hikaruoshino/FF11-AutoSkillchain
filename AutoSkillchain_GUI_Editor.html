@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoSkillchain v4.0 - GUI 連携ルートエディタ</title>
+    <style>
+        :root {
+            --bg-color: #0f141d;
+            --panel-bg: #1a2332;
+            --border-color: #2c3b52;
+            --accent-gold: #e5b842;
+            --accent-blue: #3a86ff;
+            --accent-green: #2ec4b6;
+            --accent-red: #e63946;
+            --text-color: #e0e6ed;
+            --text-muted: #8a99ad;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Meiryo', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 1px solid var(--border-color);
+            border-top: 4px solid var(--accent-gold);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--accent-gold);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button, .file-label {
+            background-color: #2a384c;
+            color: #fff;
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button:hover, .file-label:hover {
+            background-color: var(--accent-blue);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 8px rgba(58, 134, 255, 0.4);
+        }
+
+        button.btn-primary {
+            background-color: var(--accent-gold);
+            color: #111;
+            border-color: var(--accent-gold);
+        }
+
+        button.btn-primary:hover {
+            background-color: #f1c40f;
+            color: #000;
+            box-shadow: 0 0 10px rgba(229, 184, 66, 0.5);
+        }
+
+        button.btn-danger {
+            background-color: #3b1c24;
+            color: #ff858d;
+            border-color: #63222e;
+        }
+
+        button.btn-danger:hover {
+            background-color: var(--accent-red);
+            color: #fff;
+        }
+
+        /* ルート切り替えタブ */
+        .route-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-muted);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background-color: #243246;
+            color: var(--accent-gold);
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 8px rgba(229, 184, 66, 0.2);
+            font-weight: bold;
+        }
+
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        .panel-title {
+            font-size: 1.1rem;
+            color: var(--accent-gold);
+            margin-top: 0;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: bold;
+        }
+
+        input[type="text"], input[type="number"], select {
+            background-color: #0f172a;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        input[type="text"]:focus, select:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 6px rgba(58, 134, 255, 0.3);
+        }
+
+        /* ステップカード一覧 */
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .step-card {
+            background-color: #131c2a;
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--accent-blue);
+            border-radius: 6px;
+            padding: 14px;
+            display: grid;
+            grid-template-columns: 60px 1fr 1fr 120px 50px;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .step-badge {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--accent-blue);
+            text-align: center;
+        }
+
+        /* JSONプレビュー */
+        textarea {
+            width: 100%;
+            height: 180px;
+            background-color: #0b0f19;
+            color: #a5f3fc;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            padding: 12px;
+            font-size: 0.85rem;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+
+        .guide-box {
+            background-color: #1e293b;
+            border-left: 4px solid var(--accent-green);
+            padding: 12px 16px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            margin-top: 15px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>侍専用 AutoSkillchain v4.0 - GUI 連携ルートエディタ</h1>
+            <div class="subtitle">視覚的に好みの連携ルート（3〜5段）を作成・編集・即時反映</div>
+        </div>
+        <div class="btn-group">
+            <label class="file-label">
+                📂 JSONを開く
+                <input type="file" id="file-input" accept=".json">
+            </label>
+            <button class="btn-primary" onclick="downloadJSON()">💾 JSONを保存 / ダウンロード</button>
+        </div>
+    </header>
+
+    <!-- ルート選択タブ -->
+    <div class="route-tabs" id="route-tabs">
+        <!-- JSで動的生成 -->
+    </div>
+
+    <!-- ルート設定パネル -->
+    <div class="panel">
+        <div class="panel-title">
+            <span>⚙️ 選択中ルートの基本設定</span>
+            <span id="active-route-badge" style="font-size:0.85rem; color:var(--accent-gold);">ルート 1</span>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label>ルート名称 / ラベル</label>
+                <input type="text" id="route-name" placeholder="例: 核熱 ➔ 光 3段連携" oninput="updateActiveRouteData()">
+            </div>
+            <div class="form-group">
+                <label>動作モード</label>
+                <select id="route-mode" onchange="updateActiveRouteData()">
+                    <option value="custom">カスタム連携ルート定義 (定義通りに発動)</option>
+                    <option value="auto">全自動AIソルバー (最高階層連携を自動判定)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>基本待機時間 (秒)</label>
+                <input type="number" id="route-delay" step="0.5" min="1.0" max="8.0" value="6.0" oninput="updateActiveRouteData()">
+            </div>
+        </div>
+
+        <div class="panel-title">
+            <span>⚔️ 連携ステップ一覧 (トリガーWS ➔ 追撃実行WS)</span>
+            <button onclick="addStep()">＋ ステップを追加</button>
+        </div>
+
+        <div class="step-list" id="step-list">
+            <!-- JSで動的生成 -->
+        </div>
+    </div>
+
+    <!-- JSON プレビュー＆書き出しパネル -->
+    <div class="panel">
+        <div class="panel-title">
+            <span>📄 `sc_routes.json` リアルタイムプレビュー</span>
+            <button onclick="copyToClipboard()">📋 クリップボードにコピー</button>
+        </div>
+        <textarea id="json-preview" readonly></textarea>
+
+        <div class="guide-box">
+            📌 <strong>配置・適用手順:</strong><br>
+            1. 上記の **「JSONを保存 / ダウンロード」** ボタンを押して `sc_routes.json` を保存します。<br>
+            2. Windower 4 のフォルダ: <code>Windower4/addons/AutoSkillchain/data/sc_routes.json</code> へ配置します。<br>
+            3. FF11ゲーム内で <code>//sc route reload</code> または <code>//sc reload</code> を実行すると即座に適用されます。
+        </div>
+    </div>
+</div>
+
+<script>
+// 侍主要WSリスト
+const samWSList = [
+    '十二之太刀・照破',
+    '九之太刀・花車',
+    '祖之太刀・不動',
+    '五之太刀・陣風',
+    '八之太刀・月光',
+    '七之太刀・雪風',
+    '十一之太刀・鳳蝶',
+    '十之太刀・乱鴉',
+    '六之太刀・光輝',
+    '四之太刀・陽炎',
+    '参之太刀・轟天',
+    '弐之太刀・鋒縛',
+    '壱之太刀・燕飛',
+    '絶之太刀・無名',
+    'インパルスドライブ',
+    'ソニックトラスト'
+];
+
+const scResultsList = ['核熱', '分解', '湾曲', '重力', '光', '闇', '極光', '溶解', '硬化', '炸裂', '切断', '衝撃', '振動', '貫通', '収縮'];
+
+// 初期サンプルデータ (5ルート)
+let routesData = {
+    active_route: 1,
+    routes: [
+        {
+            id: 1,
+            name: "核熱 ➔ 光 3段連携 (照破 ➔ 花車 ➔ 不動)",
+            mode: "custom",
+            delay_seconds: 6.0,
+            steps: [
+                { step: 1, trigger_ws: "十二之太刀・照破", action_ws: "九之太刀・花車", sc_result: "核熱" },
+                { step: 2, trigger_ws: "九之太刀・花車", action_ws: "祖之太刀・不動", sc_result: "光" },
+                { step: 3, trigger_ws: "祖之太刀・不動", action_ws: "祖之太刀・不動", sc_result: "極光" }
+            ]
+        },
+        {
+            id: 2,
+            name: "分解 ➔ 光 ➔ 極光 (陣風 ➔ 陣風 ➔ 照破 ➔ 不動)",
+            mode: "custom",
+            delay_seconds: 6.0,
+            steps: [
+                { step: 1, trigger_ws: "五之太刀・陣風", action_ws: "十二之太刀・照破", sc_result: "分解" },
+                { step: 2, trigger_ws: "十二之太刀・照破", action_ws: "祖之太刀・不動", sc_result: "光" }
+            ]
+        },
+        {
+            id: 3,
+            name: "光 ➔ 極光 (花車 ➔ 照破 ➔ 不動)",
+            mode: "custom",
+            delay_seconds: 6.0,
+            steps: [
+                { step: 1, trigger_ws: "九之太刀・花車", action_ws: "十二之太刀・照破", sc_result: "光" },
+                { step: 2, trigger_ws: "十二之太刀・照破", action_ws: "祖之太刀・不動", sc_result: "極光" }
+            ]
+        },
+        {
+            id: 4,
+            name: "湾曲 ➔ 重力 (雪風 ➔ 月光 ➔ 乱鴉)",
+            mode: "custom",
+            delay_seconds: 6.0,
+            steps: [
+                { step: 1, trigger_ws: "七之太刀・雪風", action_ws: "八之太刀・月光", sc_result: "湾曲" },
+                { step: 2, trigger_ws: "八之太刀・月光", action_ws: "十之太刀・乱鴉", sc_result: "重力" }
+            ]
+        },
+        {
+            id: 5,
+            name: "全自動AIソルバー (Auto Solver Fallback)",
+            mode: "auto",
+            delay_seconds: 6.0,
+            steps: []
+        }
+    ]
+};
+
+let currentTabId = 1;
+
+function init() {
+    renderTabs();
+    loadRouteToForm(currentTabId);
+    updateJSONPreview();
+}
+
+function renderTabs() {
+    const tabsContainer = document.getElementById('route-tabs');
+    tabsContainer.innerHTML = '';
+    routesData.routes.forEach(r => {
+        const btn = document.createElement('div');
+        btn.className = `tab-btn ${r.id === currentTabId ? 'active' : ''}`;
+        btn.innerHTML = `<div>ルート ${r.id}</div><div style="font-size:0.75rem; opacity:0.8;">${r.name || '未設定'}</div>`;
+        btn.onclick = () => {
+            currentTabId = r.id;
+            routesData.active_route = r.id;
+            renderTabs();
+            loadRouteToForm(currentTabId);
+            updateJSONPreview();
+        };
+        tabsContainer.appendChild(btn);
+    });
+}
+
+function loadRouteToForm(id) {
+    const route = routesData.routes.find(r => r.id === id);
+    if (!route) return;
+
+    document.getElementById('active-route-badge').innerText = `ルート ${route.id}`;
+    document.getElementById('route-name').value = route.name || '';
+    document.getElementById('route-mode').value = route.mode || 'custom';
+    document.getElementById('route-delay').value = route.delay_seconds || 6.0;
+
+    renderSteps(route.steps || []);
+}
+
+function renderSteps(steps) {
+    const list = document.getElementById('step-list');
+    list.innerHTML = '';
+
+    if (steps.length === 0) {
+        list.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:20px;">ステップが登録されていません。「＋ ステップを追加」を押して連携手順を作成してください。</div>`;
+        return;
+    }
+
+    steps.forEach((st, idx) => {
+        const card = document.createElement('div');
+        card.className = 'step-card';
+
+        // 1. Badge
+        const badge = document.createElement('div');
+        badge.className = 'step-badge';
+        badge.innerText = `Step ${idx + 1}`;
+
+        // 2. Trigger WS Select
+        const trigGroup = document.createElement('div');
+        trigGroup.className = 'form-group';
+        trigGroup.innerHTML = `<label>前技 (トリガーWS)</label>`;
+        const trigSel = createWSSelect(st.trigger_ws, (val) => {
+            st.trigger_ws = val;
+            updateJSONPreview();
+        });
+        trigGroup.appendChild(trigSel);
+
+        // 3. Action WS Select
+        const actGroup = document.createElement('div');
+        actGroup.className = 'form-group';
+        actGroup.innerHTML = `<label>次技 (追撃実行WS)</label>`;
+        const actSel = createWSSelect(st.action_ws, (val) => {
+            st.action_ws = val;
+            updateJSONPreview();
+        });
+        actGroup.appendChild(actSel);
+
+        // 4. SC Result Select
+        const scGroup = document.createElement('div');
+        scGroup.className = 'form-group';
+        scGroup.innerHTML = `<label>目標連携属性</label>`;
+        const scSel = document.createElement('select');
+        scResultsList.forEach(sc => {
+            const opt = document.createElement('option');
+            opt.value = sc;
+            opt.innerText = sc;
+            if (st.sc_result === sc) opt.selected = true;
+            scSel.appendChild(opt);
+        });
+        scSel.onchange = (e) => {
+            st.sc_result = e.target.value;
+            updateJSONPreview();
+        };
+        scGroup.appendChild(scSel);
+
+        // 5. Delete button
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn-danger';
+        delBtn.innerText = '✕';
+        delBtn.onclick = () => {
+            steps.splice(idx, 1);
+            // Re-index steps
+            steps.forEach((s, i) => s.step = i + 1);
+            renderSteps(steps);
+            updateJSONPreview();
+        };
+
+        card.appendChild(badge);
+        card.appendChild(trigGroup);
+        card.appendChild(actGroup);
+        card.appendChild(scGroup);
+        card.appendChild(delBtn);
+
+        list.appendChild(card);
+    });
+}
+
+function createWSSelect(currentVal, onChange) {
+    const sel = document.createElement('select');
+    samWSList.forEach(ws => {
+        const opt = document.createElement('option');
+        opt.value = ws;
+        opt.innerText = ws;
+        if (currentVal === ws) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    sel.onchange = (e) => onChange(e.target.value);
+    return sel;
+}
+
+function addStep() {
+    const route = routesData.routes.find(r => r.id === currentTabId);
+    if (!route) return;
+
+    if (!route.steps) route.steps = [];
+    const newStepNum = route.steps.length + 1;
+    route.steps.push({
+        step: newStepNum,
+        trigger_ws: "十二之太刀・照破",
+        action_ws: "祖之太刀・不動",
+        sc_result: "光"
+    });
+
+    renderSteps(route.steps);
+    updateJSONPreview();
+}
+
+function updateActiveRouteData() {
+    const route = routesData.routes.find(r => r.id === currentTabId);
+    if (!route) return;
+
+    route.name = document.getElementById('route-name').value;
+    route.mode = document.getElementById('route-mode').value;
+    route.delay_seconds = parseFloat(document.getElementById('route-delay').value) || 6.0;
+
+    renderTabs();
+    updateJSONPreview();
+}
+
+function updateJSONPreview() {
+    document.getElementById('json-preview').value = JSON.stringify(routesData, null, 2);
+}
+
+function downloadJSON() {
+    const jsonStr = JSON.stringify(routesData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sc_routes.json';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function copyToClipboard() {
+    const textarea = document.getElementById('json-preview');
+    textarea.select();
+    document.execCommand('copy');
+    alert('JSONコードをクリップボードにコピーしました！');
+}
+
+// ファイル読み込み処理
+document.getElementById('file-input').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        try {
+            const parsed = JSON.parse(evt.target.result);
+            if (parsed && parsed.routes) {
+                routesData = parsed;
+                currentTabId = routesData.active_route || 1;
+                init();
+                alert('JSON設定ファイルを正常に読み込みました！');
+            } else {
+                alert('無効な sc_routes.json 形式です。');
+            }
+        } catch (err) {
+            alert('JSONパースエラー: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+});
+
+// 初期起動
+init();
+</script>
+
+</body>
+</html>

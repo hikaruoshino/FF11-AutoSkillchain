@@ -1,0 +1,130 @@
+{
+  "active_route": 1,
+  "routes": [
+    {
+      "id": 1,
+      "name": "鳳蝶 -> 陣風 -> 照破 -> 照破 -> 花車 -> 不動 (6段光連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        {
+          "step": 1,
+          "trigger_ws": "十一之太刀・鳳蝶",
+          "action_ws": "五之太刀・陣風",
+          "sc_result": "炸裂"
+        },
+        {
+          "step": 2,
+          "trigger_ws": "五之太刀・陣風",
+          "action_ws": "十二之太刀・照破",
+          "sc_result": "重力"
+        },
+        {
+          "step": 3,
+          "trigger_ws": "十二之太刀・照破",
+          "action_ws": "十二之太刀・照破",
+          "sc_result": "分解"
+        },
+        {
+          "step": 4,
+          "trigger_ws": "十二之太刀・照破",
+          "action_ws": "九之太刀・花車",
+          "sc_result": "核熱"
+        },
+        {
+          "step": 5,
+          "trigger_ws": "九之太刀・花車",
+          "action_ws": "祖之太刀・不動",
+          "sc_result": "光"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "鳳蝶 -> 陣風 -> 照破 -> 不動 (4段闇連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        {
+          "step": 1,
+          "trigger_ws": "十一之太刀・鳳蝶",
+          "action_ws": "五之太刀・陣風",
+          "sc_result": "炸裂"
+        },
+        {
+          "step": 2,
+          "trigger_ws": "五之太刀・陣風",
+          "action_ws": "十二之太刀・照破",
+          "sc_result": "重力"
+        },
+        {
+          "step": 3,
+          "trigger_ws": "十二之太刀・照破",
+          "action_ws": "祖之太刀・不動",
+          "sc_result": "闇"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "照破 -> 花車 -> 不動 (3段光連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        {
+          "step": 1,
+          "trigger_ws": "十二之太刀・照破",
+          "action_ws": "九之太刀・花車",
+          "sc_result": "核熱"
+        },
+        {
+          "step": 2,
+          "trigger_ws": "九之太刀・花車",
+          "action_ws": "祖之太刀・不動",
+          "sc_result": "光"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "照破 -> 不動 (2段光連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        {
+          "step": 1,
+          "trigger_ws": "十二之太刀・照破",
+          "action_ws": "祖之太刀・不動",
+          "sc_result": "光"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "雪風 -> 月光 -> 乱鴉 (3段重力連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        {
+          "step": 1,
+          "trigger_ws": "七之太刀・雪風",
+          "action_ws": "八之太刀・月光",
+          "sc_result": "湾曲"
+        },
+        {
+          "step": 2,
+          "trigger_ws": "八之太刀・月光",
+          "action_ws": "十之太刀・乱鴉",
+          "sc_result": "重力"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "全自動AIソルバー (Auto Solver)",
+      "mode": "auto",
+      "delay_seconds": 6.0,
+      "steps": []
+    }
+  ]
+}
