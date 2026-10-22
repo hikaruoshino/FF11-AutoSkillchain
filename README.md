@@ -64,6 +64,8 @@ Windower4/addons/AutoSkillchain/
 
 同梱のルートには待ち時間が入っているため、`//sc delay` は効きません。待ち時間は `data/sc_routes.json` の `delay_seconds` で変えます。
 
+選んだルートは、アドオンを読み込み直す、または route reload をすると、sc_routes.json の active_route(同梱は 1)に戻ります。
+
 ## 謝辞
 
 設定エディタの作りと、自動で連携を追う処理の考え方は、soug さんの記事とツール『WS連携自動化アドオン「ws_link」』を参考にしました。
