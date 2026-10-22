@@ -1,5 +1,5 @@
 _addon.name = 'AutoSkillchain'
-_addon.author = 'Gemini Notebook'
+_addon.author = 'hikaruoshino'
 _addon.version = '5.1'
 _addon.commands = {'sc', 'autoskillchain', 'autosc'}
 
@@ -186,11 +186,10 @@ local function sanitize_json_string(str)
     end
 
     -- 2. // 形式の一行コメントを除去
-    str = str:gsub('//[^
-]*', '')
+    str = str:gsub('//[^\r\n]*', '')
 
     -- 3. 全角/スマート引用符の半角化
-    str = str:gsub('”', '):gsub(“, '):gsub('’', '):gsub(‘, ')
+    str = str:gsub('”', '"'):gsub('“', '"'):gsub('’', "'"):gsub('‘', "'")
 
     -- 4. 末尾の余分なカンマを自動削除 (例: ", }" -> "}" や ", ]" -> "]")
     for _ = 1, 5 do
