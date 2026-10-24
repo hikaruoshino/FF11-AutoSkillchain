@@ -72,3 +72,9 @@ Windower4/addons/AutoSkillchain/
 
 - [【FF11-Windower】WS連携自動化アドオン「ws_link」の導入方法](https://ff11-windower.com/%E3%80%90ff11-windower%E3%80%91ws%E9%80%A3%E6%90%BA%E8%87%AA%E5%8B%95%E5%8C%96%E3%82%A2%E3%83%89%E3%82%AA%E3%83%B3%E3%80%8Cws_link%E3%80%8D%E3%81%AE%E5%B0%8E%E5%85%A5%E6%96%B9%E6%B3%95%EF%BC%88/)
 - [soug さんの記事一覧](https://ff11-windower.com/author/soug/)
+
+## 不具合・動作報告 / Feedback
+
+「動きました」の一言だけでも歓迎です。GitHub のアカウントがあれば、[Issues](../../issues/new/choose) から書き込めます (日本語・英語どちらでも)。
+
+A one-line "it works" is welcome too. With a GitHub account you can post from [Issues](../../issues/new/choose) (Japanese or English).
