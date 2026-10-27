@@ -1,6 +1,6 @@
 _addon.name = 'AutoSkillchain'
 _addon.author = 'hikaruoshino'
-_addon.version = '5.1'
+_addon.version = '5.2'
 _addon.commands = {'sc', 'autoskillchain', 'autosc'}
 
 local config = require('config')
@@ -18,7 +18,6 @@ local defaults = {
     delay_seconds = 6.0,
     block_seconds = 1.5,
     active_route = 1,
-    fallback_to_auto = true,
     debug = false,
 }
 
@@ -51,7 +50,7 @@ local default_json_raw = [[{
         { "step": 1, "trigger_ws": "十一之太刀・鳳蝶", "action_ws": "五之太刀・陣風",   "sc_result": "炸裂" },
         { "step": 2, "trigger_ws": "五之太刀・陣風",   "action_ws": "十二之太刀・照破", "sc_result": "重力" },
         { "step": 3, "trigger_ws": "十二之太刀・照破", "action_ws": "十二之太刀・照破", "sc_result": "分解" },
-        { "step": 4, "trigger_ws": "十二之太刀・照破", "action_ws": "九之太刀・花車",   "sc_result": "核熱" },
+        { "step": 4, "trigger_ws": "十二之太刀・照破", "action_ws": "九之太刀・花車",   "sc_result": "光" },
         { "step": 5, "trigger_ws": "九之太刀・花車",   "action_ws": "祖之太刀・不動",   "sc_result": "光" }
       ]
     },
@@ -72,13 +71,13 @@ local default_json_raw = [[{
       "mode": "custom",
       "delay_seconds": 6.0,
       "steps": [
-        { "step": 1, "trigger_ws": "十二之太刀・照破", "action_ws": "九之太刀・花車",   "sc_result": "核熱" },
+        { "step": 1, "trigger_ws": "十二之太刀・照破", "action_ws": "九之太刀・花車",   "sc_result": "光" },
         { "step": 2, "trigger_ws": "九之太刀・花車",   "action_ws": "祖之太刀・不動",   "sc_result": "光" }
       ]
     },
     {
       "id": 4,
-      "name": "照破 -> 不動 (2段光連携)",
+      "name": "照破 -> 不動 (2段光連携・照破にアフターマスがあるとき。無ければ湾曲)",
       "mode": "custom",
       "delay_seconds": 6.0,
       "steps": [
@@ -87,12 +86,12 @@ local default_json_raw = [[{
     },
     {
       "id": 5,
-      "name": "雪風 -> 月光 -> 乱鴉 (3段重力連携)",
+      "name": "雪風 -> 月光 -> 花車 (3段光連携)",
       "mode": "custom",
       "delay_seconds": 6.0,
       "steps": [
-        { "step": 1, "trigger_ws": "七之太刀・雪風",   "action_ws": "八之太刀・月光",   "sc_result": "湾曲" },
-        { "step": 2, "trigger_ws": "八之太刀・月光",   "action_ws": "十之太刀・乱鴉",   "sc_result": "重力" }
+        { "step": 1, "trigger_ws": "七之太刀・雪風",   "action_ws": "八之太刀・月光",   "sc_result": "分解" },
+        { "step": 2, "trigger_ws": "八之太刀・月光",   "action_ws": "九之太刀・花車",   "sc_result": "光" }
       ]
     },
     {
@@ -118,7 +117,7 @@ local default_routes_data = {
                 { step = 1, trigger_ws = '十一之太刀・鳳蝶', action_ws = '五之太刀・陣風',   sc_result = '炸裂' },
                 { step = 2, trigger_ws = '五之太刀・陣風',   action_ws = '十二之太刀・照破', sc_result = '重力' },
                 { step = 3, trigger_ws = '十二之太刀・照破', action_ws = '十二之太刀・照破', sc_result = '分解' },
-                { step = 4, trigger_ws = '十二之太刀・照破', action_ws = '九之太刀・花車',   sc_result = '核熱' },
+                { step = 4, trigger_ws = '十二之太刀・照破', action_ws = '九之太刀・花車',   sc_result = '光' },
                 { step = 5, trigger_ws = '九之太刀・花車',   action_ws = '祖之太刀・不動',   sc_result = '光' }
             }
         },
@@ -139,13 +138,13 @@ local default_routes_data = {
             mode = 'custom',
             delay_seconds = 6.0,
             steps = {
-                { step = 1, trigger_ws = '十二之太刀・照破', action_ws = '九之太刀・花車',   sc_result = '核熱' },
+                { step = 1, trigger_ws = '十二之太刀・照破', action_ws = '九之太刀・花車',   sc_result = '光' },
                 { step = 2, trigger_ws = '九之太刀・花車',   action_ws = '祖之太刀・不動',   sc_result = '光' }
             }
         },
         {
             id = 4,
-            name = '照破 -> 不動 (2段光連携)',
+            name = '照破 -> 不動 (2段光連携・照破にアフターマスがあるとき。無ければ湾曲)',
             mode = 'custom',
             delay_seconds = 6.0,
             steps = {
@@ -154,12 +153,12 @@ local default_routes_data = {
         },
         {
             id = 5,
-            name = '雪風 -> 月光 -> 乱鴉 (3段重力連携)',
+            name = '雪風 -> 月光 -> 花車 (3段光連携)',
             mode = 'custom',
             delay_seconds = 6.0,
             steps = {
-                { step = 1, trigger_ws = '七之太刀・雪風',   action_ws = '八之太刀・月光',   sc_result = '湾曲' },
-                { step = 2, trigger_ws = '八之太刀・月光',   action_ws = '十之太刀・乱鴉',   sc_result = '重力' }
+                { step = 1, trigger_ws = '七之太刀・雪風',   action_ws = '八之太刀・月光',   sc_result = '分解' },
+                { step = 2, trigger_ws = '八之太刀・月光',   action_ws = '九之太刀・花車',   sc_result = '光' }
             }
         },
         {
@@ -185,11 +184,26 @@ local function sanitize_json_string(str)
         str = str:sub(4)
     end
 
-    -- 2. // 形式の一行コメントを除去
-    str = str:gsub('//[^\r\n]*', '')
-
-    -- 3. 全角/スマート引用符の半角化
+    -- 2. 全角/スマート引用符の半角化 (コメントの除去より先に行う。全角の引用符で囲んだ文字列の中の // を残すため)
     str = str:gsub('”', '"'):gsub('“', '"'):gsub('’', "'"):gsub('‘', "'")
+
+    -- 3. // 形式の一行コメントを除去 (文字列の中の // は残す。例: "https://...")
+    do
+        local out = {}
+        for line in (str .. '\n'):gmatch('([^\n]*)\n') do
+            local in_str, esc, cut = false, false, nil
+            for i = 1, #line do
+                local c = line:sub(i, i)
+                if esc then esc = false
+                elseif in_str then
+                    if c == '\\' then esc = true elseif c == '"' then in_str = false end
+                elseif c == '"' then in_str = true
+                elseif c == '/' and line:sub(i + 1, i + 1) == '/' then cut = i; break end
+            end
+            out[#out + 1] = cut and line:sub(1, cut - 1) or line
+        end
+        str = table.concat(out, '\n')
+    end
 
     -- 4. 末尾の余分なカンマを自動削除 (例: ", }" -> "}" や ", ]" -> "]")
     for _ = 1, 5 do
@@ -261,6 +275,27 @@ local function load_sc_routes()
         return false
     end
 
+    -- ルートの技名を res と照合する。未知の名前は、ゲーム内で黙って失敗するので、先に知らせる
+    local known = {}
+    for _, row in pairs(res.weapon_skills) do
+        if type(row) == 'table' then
+            if row.ja then known[row.ja] = true end
+            if row.en then known[row.en] = true end
+        end
+    end
+    local unknown = {}
+    for _, r in ipairs(parsed.routes) do
+        for _, st in ipairs(r.steps or {}) do
+            for _, key in ipairs{'trigger_ws', 'action_ws'} do
+                local n = st[key]
+                if n and not known[n] and not unknown[n] then
+                    unknown[n] = true
+                    msg('警告: ルート ' .. tostring(r.id) .. ' の技名 [' .. tostring(n) .. '] が Windower の一覧にありません (誤字?)。', 123)
+                end
+            end
+        end
+    end
+
     routes_data = parsed
     if parsed.active_route then
         settings.active_route = parsed.active_route
@@ -286,9 +321,13 @@ local function has_skillchain_effect(act)
         if target.actions then
             for _, sub_act in ipairs(target.actions) do
                 if sub_act.has_add_effect then
-                    local msg_id = sub_act.add_effect_message
-                    -- FFXI 連携メッセージID: 288~302, 385, 386, 767~770
-                    if (msg_id >= 288 and msg_id <= 302) or msg_id == 385 or msg_id == 386 or (msg_id >= 767 and msg_id <= 770) or (sub_act.add_effect_animation and sub_act.add_effect_animation > 0) then
+                    local msg_id = sub_act.add_effect_message or 0   -- 無いときに数と比べて落ちないように
+                    -- 連携のメッセージ番号 (Windower の res/action_messages.lua): 288-302 ダメージ / 385-398 回復 (敵が属性を吸収したとき) / 767-770 極光・黒闇
+                    if (msg_id >= 288 and msg_id <= 302) or (msg_id >= 385 and msg_id <= 398) or (msg_id >= 767 and msg_id <= 770) then
+                        return true
+                    end
+                    -- メッセージ番号が無いときだけ、アニメーションで補う (連携以外の追加効果を連携と誤認しないため)
+                    if msg_id == 0 and sub_act.add_effect_animation and sub_act.add_effect_animation > 0 then
                         return true
                     end
                 end
@@ -296,6 +335,30 @@ local function has_skillchain_effect(act)
         end
     end
     return false
+end
+
+-- 当たらなかった技の結果のメッセージ (Windower の res/action_messages.lua): 31 分身で消された / 188・189 外れ / 323・324 効果なし・外れ
+local NO_HIT_MESSAGES = {[31] = true, [188] = true, [189] = true, [323] = true, [324] = true}
+
+-- 初段の技で、ルートを始めてよいか。当たっていて、それ自体で連携を起こしていない (= 新しい始点になった) ときだけ始める
+-- (外れた初段や、前の技の続きとして連携を締めた初段から始めると、次の技が必ず連携不成立になるため)
+local function can_open_route(act, target_id, ws_name)
+    local landed = false
+    for _, t in ipairs(act.targets or {}) do
+        if t.id == target_id and t.actions and t.actions[1] then
+            landed = not NO_HIT_MESSAGES[t.actions[1].message or 0]
+            break
+        end
+    end
+    if not landed then
+        msg('初段[' .. ws_name .. ']が当たらなかったため、ルートを始めません。', 123)
+        return false
+    end
+    if has_skillchain_effect(act) then
+        msg('初段[' .. ws_name .. ']で連携が起きた (前の技の続きになった) ため、ルートを始めません。', 123)
+        return false
+    end
+    return true
 end
 
 -- 英語 -> 日本語 連携属性変換
@@ -306,47 +369,37 @@ local sc_elem_en_to_jp = {
     ['Impaction'] = '衝撃', ['Reverberation'] = '振動', ['Transfixion'] = '貫通', ['Compression'] = '収縮'
 }
 
-local LV1 = {
-    ['溶解'] = { ['衝撃'] = '核熱', ['切断'] = '切断' },
-    ['硬化'] = { ['振動'] = '湾曲', ['衝撃'] = '硬化', ['収縮'] = '収縮' },
-    ['炸裂'] = { ['切断'] = '切断', ['収縮'] = '重力' },
-    ['切断'] = { ['貫通'] = '湾曲', ['溶解'] = '溶解', ['炸裂'] = '炸裂', ['振動'] = '振動' },
-    ['衝撃'] = { ['溶解'] = '溶解', ['切断'] = '切断' },
-    ['振動'] = { ['硬化'] = '硬化', ['衝撃'] = '衝撃' },
-    ['貫通'] = { ['収縮'] = '収縮', ['切断'] = '湾曲', ['振動'] = '振動' },
-    ['収縮'] = { ['貫通'] = '貫通', ['硬化'] = '収縮' }
-}
-
-local LV2 = {
-    ['核熱'] = { ['重力'] = '光', ['分解'] = '核熱' },
-    ['重力'] = { ['分解'] = '闇', ['湾曲'] = '重力' },
-    ['分解'] = { ['核熱'] = '光', ['湾曲'] = '分解' },
-    ['湾曲'] = { ['重力'] = '闇', ['核熱'] = '湾曲' }
-}
-
-local LV3 = {
-    ['光'] = { ['光'] = '光' },
-    ['闇'] = { ['闇'] = '闇' }
+-- 連携の組み合わせ表: SC[先の属性][後の属性] = {できる連携, 階層}。順番は先→後で、逆向きは別の行 (表にある組み合わせだけ連携になる)
+-- 照合: Ivaar/Skillchains の表と Horizon wiki (2026-10)。光+光 / 闇+闇 は Lv3 の 光 / 闇 で、イオニックAM中だけ Lv4 の 極光 / 黒闇 (get_skillchain_result)
+local SC = {
+    ['溶解'] = { ['切断'] = {'切断', 1}, ['衝撃'] = {'核熱', 2} },
+    ['硬化'] = { ['衝撃'] = {'衝撃', 1}, ['振動'] = {'分解', 2}, ['収縮'] = {'収縮', 1} },
+    ['炸裂'] = { ['切断'] = {'切断', 1}, ['収縮'] = {'重力', 2} },
+    ['切断'] = { ['溶解'] = {'溶解', 1}, ['炸裂'] = {'炸裂', 1}, ['振動'] = {'振動', 1} },
+    ['衝撃'] = { ['溶解'] = {'溶解', 1}, ['炸裂'] = {'炸裂', 1} },
+    ['振動'] = { ['硬化'] = {'硬化', 1}, ['衝撃'] = {'衝撃', 1} },
+    ['貫通'] = { ['切断'] = {'湾曲', 2}, ['振動'] = {'振動', 1}, ['収縮'] = {'収縮', 1} },
+    ['収縮'] = { ['炸裂'] = {'炸裂', 1}, ['貫通'] = {'貫通', 1} },
+    ['核熱'] = { ['重力'] = {'重力', 2}, ['分解'] = {'光', 3} },
+    ['重力'] = { ['分解'] = {'分解', 2}, ['湾曲'] = {'闇', 3} },
+    ['分解'] = { ['核熱'] = {'光', 3}, ['湾曲'] = {'湾曲', 2} },
+    ['湾曲'] = { ['核熱'] = {'核熱', 2}, ['重力'] = {'闇', 3} },
+    ['光'] = { ['光'] = {'光', 3} },
+    ['闇'] = { ['闇'] = {'闇', 3} },
 }
 
 local function get_skillchain_result(elements1, elements2, has_ionic_am)
     local best_sc = nil
     local best_level = 0
     for _, elem1 in ipairs(elements1) do
+        local row = SC[elem1]
         for _, elem2 in ipairs(elements2) do
             if has_ionic_am then
                 if elem1 == '光' and elem2 == '光' then return '極光', 4
                 elseif elem1 == '闇' and elem2 == '闇' then return '黒闇', 4 end
             end
-            if LV3[elem1] and LV3[elem1][elem2] then
-                if 3 > best_level then best_sc = LV3[elem1][elem2]; best_level = 3 end
-            end
-            if LV2[elem1] and LV2[elem1][elem2] then
-                if 2 > best_level then best_sc = LV2[elem1][elem2]; best_level = 2 end
-            end
-            if LV1[elem1] and LV1[elem1][elem2] then
-                if 1 > best_level then best_sc = LV1[elem1][elem2]; best_level = 1 end
-            end
+            local hit = row and row[elem2]
+            if hit and hit[2] > best_level then best_sc = hit[1]; best_level = hit[2] end
         end
     end
     return best_sc, best_level
@@ -367,8 +420,8 @@ local sam_ws_list = {
     { name = '弐之太刀・鋒縛',   skill = 75,  elements = {'硬化'} },
     { name = '壱之太刀・燕飛',   skill = 1,   elements = {'貫通', '切断'} },
     { name = '絶之太刀・無名',   skill = 357, elements = {'炸裂', '収縮', '湾曲'} },
-    { name = 'インパルスドライブ', skill = 250, elements = {'重力', '貫通'} },
-    { name = 'ソニックトラスト',   skill = 290, elements = {'貫通', '切断'} }
+    { name = 'インパルスドライヴ', skill = 250, elements = {'重力', '硬化'} },   -- 名前は Windower の res のとおり (ヴ)。属性も res に合わせた
+    { name = 'ソニックスラスト',   skill = 290, elements = {'貫通', '切断'} }
 }
 
 local all_ws_elements = {
@@ -386,7 +439,7 @@ local all_ws_elements = {
     ['弐之太刀・鋒縛']   = {'硬化'},
     ['壱之太刀・燕飛']   = {'貫通', '切断'},
     ['絶之太刀・無名']   = {'炸裂', '収縮', '湾曲'},
-    ['インパルスドライブ'] = {'重力', '貫通'}, ['ソニックトラスト'] = {'貫通', '切断'}
+    ['インパルスドライヴ'] = {'重力', '硬化'}, ['ソニックスラスト'] = {'貫通', '切断'}
 }
 
 local function resolve_ws_elements(info)
@@ -418,16 +471,43 @@ local function check_ionic_aftermath()
     return false
 end
 
+-- 今使える (武器・習得済みの) 技の ID の集合。取れないときは nil (絞り込まない)
+local ws_id_by_name = nil
+local function usable_ws_ids()
+    local ok, ab = pcall(windower.ffxi.get_abilities)
+    if not ok or type(ab) ~= 'table' or type(ab.weapon_skills) ~= 'table' then return nil end
+    local set = {}
+    for _, id in ipairs(ab.weapon_skills) do set[id] = true end
+    return set
+end
+
+local function ws_is_usable(usable, name)
+    if not usable then return true end
+    if not ws_id_by_name then
+        ws_id_by_name = {}
+        for id, row in pairs(res.weapon_skills) do
+            if type(row) == 'table' then
+                if row.ja then ws_id_by_name[row.ja] = id end
+                if row.en then ws_id_by_name[row.en] = id end
+            end
+        end
+    end
+    local id = ws_id_by_name[name]
+    if not id then return true end   -- 一覧に無い名前は、絞らない (判断できない)
+    return usable[id] == true
+end
+
 local function find_best_sam_ws(target_ws_elements)
     local player = windower.ffxi.get_player()
     if not player or player.main_job ~= 'SAM' then return nil, nil, nil end
     local has_ionic_am = check_ionic_aftermath()
+    local usable = usable_ws_ids()
 
     for level_order = 1, 4 do
         local target_sc_level = (level_order == 1 and 3) or (level_order == 2 and 4) or (level_order == 3 and 2) or 1
         for _, ws in ipairs(sam_ws_list) do
             local sc_name, sc_lvl = get_skillchain_result(target_ws_elements, ws.elements, has_ionic_am)
-            if sc_lvl == target_sc_level then
+            if sc_lvl == target_sc_level and ws_is_usable(usable, ws.name) then
                 return ws.name, sc_name, sc_lvl
             end
         end
@@ -477,6 +557,7 @@ local function try_execute_ws(ws_name, sc_result, is_solo, route_label, expected
 end
 
 local recent = {}
+local recent_count = 0
 local function recent_key(actor_id, param)
     return tostring(actor_id) .. '|' .. tostring(param)
 end
@@ -492,6 +573,14 @@ windower.register_event('action', function(act)
     local now = os.clock()
     if recent[r_key] and (now - recent[r_key]) < (settings.block_seconds or 1.5) then return end
     recent[r_key] = now
+    recent_count = recent_count + 1
+    if recent_count >= 64 then   -- 古い記録を掃除する (増え続けないように)
+        recent_count = 0
+        local keep = (settings.block_seconds or 1.5)
+        for k, t in pairs(recent) do
+            if now - t >= keep then recent[k] = nil end
+        end
+    end
 
     local mob = windower.ffxi.get_mob_by_id(act.actor_id)
     if not mob then return end
@@ -531,6 +620,7 @@ windower.register_event('action', function(act)
         if current_step == 1 then
             local step1 = steps[1]
             if step1 and step1.trigger_ws == ws_display_name then
+                if not can_open_route(act, my_target.id, ws_display_name) then return end
                 if step1.action_ws then
                     local delay_sec = active_r.delay_seconds or settings.delay_seconds or 6.0
                     msg('ルート[' .. active_r.id .. ':' .. (active_r.name or '') .. '] Step 1: 初段[' .. ws_display_name .. ']検知 -> 次技[' .. step1.action_ws .. '] (目標:' .. (step1.sc_result or '連携') .. ') ' .. string.format('%.1f', delay_sec) .. 's待機中...', 209)
@@ -586,6 +676,7 @@ windower.register_event('action', function(act)
                 execution_token = execution_token + 1
                 current_step = 1
                 local step1 = steps[1]
+                if not can_open_route(act, my_target.id, ws_display_name) then return end
                 if step1 and step1.action_ws then
                     local delay_sec = active_r.delay_seconds or settings.delay_seconds or 6.0
                     msg('ルート[' .. active_r.id .. '] Step 1 (再起動): 初段[' .. ws_display_name .. ']検知 -> 次技[' .. step1.action_ws .. '] ' .. string.format('%.1f', delay_sec) .. 's待機中...', 209)
@@ -603,13 +694,15 @@ windower.register_event('action', function(act)
         end
     end
 
-    -- 自動AIソルバー (Fallback)
-    if not active_r or active_r.mode == 'auto' or settings.fallback_to_auto then
+    -- 自動AIソルバー (ルートが無いとき・全自動ルートのとき)
+    -- カスタムルートは上ですべて return するので、ここには来ない (以前の設定 fallback_to_auto は効いていなかったため削除)
+    if not active_r or active_r.mode == 'auto' then
         if ws_elements and #ws_elements > 0 then
             local next_ws, sc_result, sc_level = find_best_sam_ws(ws_elements)
             if next_ws then
                 local delay_sec = settings.delay_seconds or 6.0
                 msg('AIソルバー: 前技[' .. ws_display_name .. ']検知 -> 最高階層連携【' .. sc_result .. ' (Lv' .. sc_level .. ')】 [' .. next_ws .. '] ' .. string.format('%.1f', delay_sec) .. 's待機中...', 209)
+                execution_token = execution_token + 1   -- 前の予約を取り消す (PT の全員の技に反応して、/ws が何回も送られないように)
                 try_execute_ws(next_ws, sc_result, is_me, '自動AIソルバー', current_step)
             end
         end
@@ -639,7 +732,7 @@ windower.register_event('addon command', function(...)
         if not sub or sub == 'status' or sub == 'show' then
             local active_r = get_active_route()
             msg('==================================================')
-            msg('  [AutoSkillchain v5.1] 現在の連携ルート設定')
+            msg('  [AutoSkillchain v' .. _addon.version .. '] 現在の連携ルート設定')
             msg('--------------------------------------------------')
             msg('  ・選択中ルート: ルート ' .. (settings.active_route or 1) .. ' 【 ' .. (active_r.name or '') .. ' 】')
             msg('  ・動作モード: ' .. (active_r.mode or 'custom'))
@@ -698,7 +791,7 @@ windower.register_event('addon command', function(...)
     elseif cmd == 'status' or cmd == 'show' then
         local active_r = get_active_route()
         msg('==================================================')
-        msg('  [AutoSkillchain v5.1] 設定ステータス')
+        msg('  [AutoSkillchain v' .. _addon.version .. '] 設定ステータス')
         msg('--------------------------------------------------')
         msg('  ・全体機能: ' .. (settings.enabled and 'ON' or 'OFF'))
         msg('  ・選択ルート: ルート ' .. (settings.active_route or 1) .. ' (' .. (active_r.name or '') .. ')')
@@ -711,7 +804,7 @@ windower.register_event('addon command', function(...)
         windower.send_command('lua r AutoSkillchain')
     else
         msg('==================================================')
-        msg('  [AutoSkillchain v5.1] コマンドヘルプ')
+        msg('  [AutoSkillchain v' .. _addon.version .. '] コマンドヘルプ')
         msg('--------------------------------------------------')
         msg('  //sc route <1~6>  : 連携ルート(1~6)の切り替え')
         msg('  //sc route reload : sc_routes.jsonの再読み込み')

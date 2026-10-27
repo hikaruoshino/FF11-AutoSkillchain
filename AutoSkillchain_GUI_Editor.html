@@ -338,65 +338,77 @@ const samWSList = [
     '弐之太刀・鋒縛',
     '壱之太刀・燕飛',
     '絶之太刀・無名',
-    'インパルスドライブ',
-    'ソニックトラスト'
+    'インパルスドライヴ',
+    'ソニックスラスト'
 ];
 
 const scResultsList = ['核熱', '分解', '湾曲', '重力', '光', '闇', '極光', '溶解', '硬化', '炸裂', '切断', '衝撃', '振動', '貫通', '収縮'];
 
-// 初期サンプルデータ (5ルート)
+// 初期サンプルデータ (data/sc_routes.json の同梱のルートと同じ)
 let routesData = {
-    active_route: 1,
-    routes: [
-        {
-            id: 1,
-            name: "核熱 ➔ 光 3段連携 (照破 ➔ 花車 ➔ 不動)",
-            mode: "custom",
-            delay_seconds: 6.0,
-            steps: [
-                { step: 1, trigger_ws: "十二之太刀・照破", action_ws: "九之太刀・花車", sc_result: "核熱" },
-                { step: 2, trigger_ws: "九之太刀・花車", action_ws: "祖之太刀・不動", sc_result: "光" },
-                { step: 3, trigger_ws: "祖之太刀・不動", action_ws: "祖之太刀・不動", sc_result: "極光" }
-            ]
-        },
-        {
-            id: 2,
-            name: "分解 ➔ 光 ➔ 極光 (陣風 ➔ 陣風 ➔ 照破 ➔ 不動)",
-            mode: "custom",
-            delay_seconds: 6.0,
-            steps: [
-                { step: 1, trigger_ws: "五之太刀・陣風", action_ws: "十二之太刀・照破", sc_result: "分解" },
-                { step: 2, trigger_ws: "十二之太刀・照破", action_ws: "祖之太刀・不動", sc_result: "光" }
-            ]
-        },
-        {
-            id: 3,
-            name: "光 ➔ 極光 (花車 ➔ 照破 ➔ 不動)",
-            mode: "custom",
-            delay_seconds: 6.0,
-            steps: [
-                { step: 1, trigger_ws: "九之太刀・花車", action_ws: "十二之太刀・照破", sc_result: "光" },
-                { step: 2, trigger_ws: "十二之太刀・照破", action_ws: "祖之太刀・不動", sc_result: "極光" }
-            ]
-        },
-        {
-            id: 4,
-            name: "湾曲 ➔ 重力 (雪風 ➔ 月光 ➔ 乱鴉)",
-            mode: "custom",
-            delay_seconds: 6.0,
-            steps: [
-                { step: 1, trigger_ws: "七之太刀・雪風", action_ws: "八之太刀・月光", sc_result: "湾曲" },
-                { step: 2, trigger_ws: "八之太刀・月光", action_ws: "十之太刀・乱鴉", sc_result: "重力" }
-            ]
-        },
-        {
-            id: 5,
-            name: "全自動AIソルバー (Auto Solver Fallback)",
-            mode: "auto",
-            delay_seconds: 6.0,
-            steps: []
-        }
-    ]
+  "active_route": 1,
+  "routes": [
+    {
+      "id": 1,
+      "name": "鳳蝶 -> 陣風 -> 照破 -> 照破 -> 花車 -> 不動 (6段光連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        { "step": 1, "trigger_ws": "十一之太刀・鳳蝶", "action_ws": "五之太刀・陣風",   "sc_result": "炸裂" },
+        { "step": 2, "trigger_ws": "五之太刀・陣風",   "action_ws": "十二之太刀・照破", "sc_result": "重力" },
+        { "step": 3, "trigger_ws": "十二之太刀・照破", "action_ws": "十二之太刀・照破", "sc_result": "分解" },
+        { "step": 4, "trigger_ws": "十二之太刀・照破", "action_ws": "九之太刀・花車",   "sc_result": "光" },
+        { "step": 5, "trigger_ws": "九之太刀・花車",   "action_ws": "祖之太刀・不動",   "sc_result": "光" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "鳳蝶 -> 陣風 -> 照破 -> 不動 (4段闇連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        { "step": 1, "trigger_ws": "十一之太刀・鳳蝶", "action_ws": "五之太刀・陣風",   "sc_result": "炸裂" },
+        { "step": 2, "trigger_ws": "五之太刀・陣風",   "action_ws": "十二之太刀・照破", "sc_result": "重力" },
+        { "step": 3, "trigger_ws": "十二之太刀・照破", "action_ws": "祖之太刀・不動",   "sc_result": "闇" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "照破 -> 花車 -> 不動 (3段光連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        { "step": 1, "trigger_ws": "十二之太刀・照破", "action_ws": "九之太刀・花車",   "sc_result": "光" },
+        { "step": 2, "trigger_ws": "九之太刀・花車",   "action_ws": "祖之太刀・不動",   "sc_result": "光" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "照破 -> 不動 (2段光連携・照破にアフターマスがあるとき。無ければ湾曲)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        { "step": 1, "trigger_ws": "十二之太刀・照破", "action_ws": "祖之太刀・不動",   "sc_result": "光" }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "雪風 -> 月光 -> 花車 (3段光連携)",
+      "mode": "custom",
+      "delay_seconds": 6.0,
+      "steps": [
+        { "step": 1, "trigger_ws": "七之太刀・雪風",   "action_ws": "八之太刀・月光",   "sc_result": "分解" },
+        { "step": 2, "trigger_ws": "八之太刀・月光",   "action_ws": "九之太刀・花車",   "sc_result": "光" }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "全自動AIソルバー (Auto Solver)",
+      "mode": "auto",
+      "delay_seconds": 6.0,
+      "steps": []
+    }
+  ]
 };
 
 let currentTabId = 1;
