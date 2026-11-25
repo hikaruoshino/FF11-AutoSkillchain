@@ -1,11 +1,12 @@
 _addon.name = 'AutoSkillchain'
 _addon.author = 'hikaruoshino'
-_addon.version = '5.3.1'
+_addon.version = '5.3.2'
 _addon.commands = {'sc', 'autoskillchain', 'autosc'}
 
 local config = require('config')
 local res = require('resources')
 local files = require('files')
+local packets = require('packets')
 
 local sc_json = require('libs/sc_json')   -- 読むだけの JSON リーダー (libs/json.lua は入れ子の配列を読めず、json.decode も無いため)
 
@@ -696,7 +697,9 @@ local INCAPACITATED = {[2] = true, [7] = true, [10] = true, [14] = true, [16] = 
 -- 0x029 の失敗通知は個々の送信に結び付かないため、着弾がなければ LAND_TIMEOUT で予約を捨てる
 -- ゾーン移動・ログアウト・アンロード・//sc stop で消す
 local sent_log = {}
+local saw_injected_ws = false
 local function sent_log_clear()
+    saw_injected_ws = false
     for i = #sent_log, 1, -1 do sent_log[i] = nil end
 end
 local function sent_log_prune(now)
@@ -707,7 +710,15 @@ local function sent_log_prune(now)
 end
 local function sent_log_add(ws, target_id, now, token)
     sent_log_prune(now)
-    sent_log[#sent_log + 1] = {ws = ws, target_id = target_id, at = now, token = token}
+    local entry = {ws = ws, target_id = target_id, at = now, token = token}
+    -- 再予約は受付時間内に送る。前回分が残る場合はどちらの着弾でも次段を起動しない。
+    for _, old in ipairs(sent_log) do
+        if old.ambiguous and old.ws == ws and old.target_id == target_id then
+            entry.ambiguous = true
+            break
+        end
+    end
+    sent_log[#sent_log + 1] = entry
 end
 -- 記録にあるか (取り除かない)
 local function sent_log_has(ws, target_id, now)
@@ -723,7 +734,11 @@ local function sent_log_take(ws, target_id, now)
     for i = 1, #sent_log do
         local e = sent_log[i]
         if e.ws == ws and e.target_id == target_id then
-            table.remove(sent_log, i)
+            if e.ambiguous and (e.requests or 0) > 1 then
+                e.requests = e.requests - 1
+            else
+                table.remove(sent_log, i)
+            end
             return e
         end
     end
@@ -1015,6 +1030,49 @@ local function recent_key(actor_id, param, target_id)
     return tostring(actor_id) .. '|' .. tostring(param) .. '|' .. tostring(target_id)
 end
 
+local function read_action_fields(direction, raw, modified, min_length)
+    local data = modified or raw
+    if type(data) ~= 'string' or #data < min_length then return end
+    local ok, fields = pcall(packets.parse, direction, data)
+    if ok and type(fields) == 'table' then return fields end
+end
+-- GearSwap がコマンドを処理済みでも元の入力を参照する。
+windower.register_event('outgoing text', function(original)
+    if type(original) ~= 'string' or not st.pending or not st.pending.sent_at then return end
+    local prefix = original:match('^%s*(/%S+)')
+    if not prefix then return end
+    prefix = prefix:lower()
+    if prefix ~= '/ws' and prefix ~= '/weaponskill' then return end
+    for _, entry in ipairs(sent_log) do
+        if entry.token == st.token then
+            if entry.command_seen then entry.ambiguous = true end
+            entry.command_seen = true
+        end
+    end
+end)
+windower.register_event('outgoing chunk', function(id, raw, modified, injected, blocked)
+    if id ~= 0x01A or blocked then return end
+    if #sent_log == 0 and (saw_injected_ws or not injected) then return end
+    local fields = read_action_fields('outgoing', raw, modified, 16)
+    if not fields or fields.Category ~= 7 then return end
+    if injected then saw_injected_ws = true end
+    if #sent_log == 0 then return end
+    local ws = res.weapon_skills[fields.Param]
+    local now = os.clock()
+    sent_log_prune(now)
+    for i = #sent_log, 1, -1 do
+        local entry = sent_log[i]
+        if ws and ws.ja == entry.ws and fields.Target == entry.target_id then
+            entry.requests = (entry.requests or 0) + 1
+            -- 注入とクライアント直接送信が混在するときは、直接送信の着弾で次段へ進めない。
+            if entry.requests > 1 or (saw_injected_ws and injected == false) then
+                entry.ambiguous = true
+            end
+            break
+        end
+    end
+end)
+
 windower.register_event('action', function(act)
     if not settings.enabled then return end
     if not act or act.category ~= 3 then return end
@@ -1072,14 +1130,15 @@ windower.register_event('action', function(act)
     local kind = actor_kind(act.actor_id, player)
     local pend = st.pending
     local sent = kind == 'me' and sent_log_take(ws_display_name, my_target.id, now) or nil
-    local confirm = sent ~= nil and sent.token == st.token
+    local confirm = sent ~= nil and sent.requests and sent.command_seen and not sent.ambiguous and sent.token == st.token
         and pend ~= nil and pend.sent_at ~= nil and pend.ws == ws_display_name
         and st.target_id == my_target.id
     -- 自分が送った技の着弾は、確認 (confirm) でなければ捨てる (取り消しのあとに着弾した自動の技を、新しい始点にしない)
     -- 進行中なら、それも取り消す (送ったあと着弾の前に入り直して予約が新しくなった: 古い前提のまま次を送らない)
     if sent and not confirm then
+        if sent.ambiguous and sent.token ~= st.token then return end
         if is_running() then
-            cancel_all('前に送った [' .. ws_display_name .. '] が、予約を入れ直したあとに着弾したので、進行を取り消しました。')
+            cancel_all('[' .. ws_display_name .. '] の着弾を現在の予約に結び付けられないため、進行を取り消しました。')
         end
         return
     end
@@ -1100,6 +1159,7 @@ windower.register_event('addon command', function(...)
 
     if cmd == 'reset' or cmd == 'clear' then
         cancel_all(nil)
+        saw_injected_ws = false
         msg('連携ステップを最初の【初段待機状態 (Step 1)】へ手動リセットしました。', 158)
         return
     end
@@ -1225,7 +1285,7 @@ windower.register_event('addon command', function(...)
         msg('  //sc route fix    : 設定ファイルを既定に戻す (確認のあと、30 秒以内に //sc route fix confirm)')
         msg('  //sc stop         : 予約と進行を取り消して止める (別名 abort / off)')
         msg('  //sc start        : 止めたのを再開する (別名 on)')
-        msg('  //sc reset        : 連携ステップの手動リセット (予約も取り消す)')
+        msg('  //sc reset        : 連携ステップの手動リセット (別名 clear / 予約も取り消す)')
         msg('  //sc toggle       : アドオン全体のON/OFF切り替え')
         msg('  //sc party        : PT連携追撃のON/OFF切り替え')
         msg('  //sc solo         : 一人連携追撃のON/OFF切り替え')

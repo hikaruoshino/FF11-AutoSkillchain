@@ -1,4 +1,4 @@
-# AutoSkillchain (v5.3.1)
+# AutoSkillchain (v5.3.2)
 
 **ファイナルファンタジーXI（Windower 4 用） 侍の連携の続きを自動で撃つアドオン**
 
@@ -12,7 +12,7 @@
 
 > 放置・無人での使用はしないでください。
 
-> **ゲーム内での確認**: v5.3.1 までの変更（安全の強化・仕様の変更）は、模擬環境のテストだけで確かめています。ゲーム内では確かめていません。
+> **ゲーム内での確認**: v5.3.2 までの変更（安全の強化・仕様の変更）は、模擬環境のテストだけで確かめています。ゲーム内では確かめていません。
 
 ---
 
@@ -38,7 +38,7 @@ AutoSkillchain/
 
 1. `AutoSkillchain` フォルダーを `Windower4/addons/` に置きます（`libs/sc_json.lua` を含めて）。
 2. ゲーム内で `//lua load AutoSkillchain` を実行します。
-3. 読み込むと `loaded v5.3.1 -- ... (ルート1適用中・全体機能: ON)` のように出ます。`全体機能: OFF` と出たら、前に `//sc stop` で止めたままです。`//sc start` で再開します。
+3. 読み込むと `loaded v5.3.2 -- ... (ルート1適用中・全体機能: ON)` のように出ます。`全体機能: OFF` と出たら、前に `//sc stop` で止めたままです。`//sc start` で再開します。
 
 ---
 
@@ -52,7 +52,6 @@ AutoSkillchain/
 * 送る直前に次を確かめ、合わなければ予約を取り消します: 戦闘中か・行動不能（睡眠・石化・スタン・魅了・アムネジア・テラー・ララバイ）でないか・`<t>` が予約した敵のままか・敵の HP が 0 でないか。
 * 敵が遠い（3.5 ＋ 敵の大きさが 2 を超えた分）あいだは送らずに待ちます。TP が 1000 に届かないあいだも待ちます。
 * 送ってから 8 秒たっても着弾を確かめられなければ、予約を取り消します。
-* 送った WS の着弾を8秒以内に確認できなければ予約を終了します。
 * 次のどれかで、予約と進行を取り消します: 交戦の解除・戦闘不能・ジョブの変更・エリアの移動・ログアウト・アンロード・`//sc stop`・`//sc reset`・ルートの切り替えと読み直し・ルートに無い WS が入った。
 
 ### カスタムルート（`mode: custom`）
@@ -85,7 +84,7 @@ AutoSkillchain/
 | `//sc stop`（`//sc abort`・`//sc off` も同じ） | 予約と進行を取り消して止める（全体機能を OFF にして保存する。読み込み直しても OFF のまま） |
 | `//sc start`（`//sc on` も同じ） | 止めたのを再開する（OFF → ON のときは、全自動の通算と PT の始点だけの記録も消す） |
 | `//sc toggle` | 全体機能の ON / OFF を切り替える |
-| `//sc reset` | 予約を取り消し、ステップを最初に戻す |
+| `//sc reset`（`//sc clear` も同じ） | 予約を取り消し、初段待機に戻ってWSの送信経路を判定し直す。同じエリアでGearSwapを無効にした後は、このコマンドを1回実行する |
 | `//sc route <番号>` | ルートを切り替える（`data/sc_routes.json` にある番号） |
 | `//sc route` | 選んでいるルートを表示する |
 | `//sc route reload` | `data/sc_routes.json` を読み直す（失敗したら前のルートのまま） |
@@ -110,6 +109,8 @@ AutoSkillchain/
 
 ## 📜 更新履歴
 
+* **v5.3.2**
+  * 自動WSと手動WSの着弾照合、重複要求後の再予約、GearSwap 無効化後の `//sc reset` / `//sc clear` での送信経路の再判定に対応しました。ゲーム内未確認です。
 * **v5.3.1**
   * 拒否通知が遅れて届いても次の予約を取り消さず、同じ初段 WS で別の敵に連携を開始できます。ゲーム内未確認です。
 * **v5.3**
@@ -150,7 +151,7 @@ Version 5.3 follows openers from your party, checks the target before sending a 
 - [【FF11-Windower】WS連携自動化アドオン「ws_link」の導入方法](https://ff11-windower.com/%E3%80%90ff11-windower%E3%80%91ws%E9%80%A3%E6%90%BA%E8%87%AA%E5%8B%95%E5%8C%96%E3%82%A2%E3%83%89%E3%82%AA%E3%83%B3%E3%80%8Cws_link%E3%80%8D%E3%81%AE%E5%B0%8E%E5%85%A5%E6%96%B9%E6%B3%95%EF%BC%88/)
 - [soug さんの記事一覧](https://ff11-windower.com/author/soug/)
 
-v5.3.1 prevents delayed rejection messages from canceling a later reservation and distinguishes identical opening weapon skills on different targets. Tested in simulation; in-game verification is pending.
+v5.3.2 refines matching between automated and manual weapon skill requests, handles re-reservation after overlapping requests, and re-evaluates the send path on `//sc reset` / `//sc clear` after disabling GearSwap. Tested in simulation; in-game verification is pending.
 
 ## 不具合・動作報告 / Feedback
 
