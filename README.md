@@ -1,4 +1,4 @@
-# AutoSkillchain (v5.3)
+# AutoSkillchain (v5.3.1)
 
 **ファイナルファンタジーXI（Windower 4 用） 侍の連携の続きを自動で撃つアドオン**
 
@@ -12,7 +12,7 @@
 
 > 放置・無人での使用はしないでください。
 
-> **ゲーム内での確認**: v5.3 の変更（安全の強化・仕様の変更）は、模擬環境のテストだけで確かめています。ゲーム内では確かめていません。
+> **ゲーム内での確認**: v5.3.1 までの変更（安全の強化・仕様の変更）は、模擬環境のテストだけで確かめています。ゲーム内では確かめていません。
 
 ---
 
@@ -38,7 +38,7 @@ AutoSkillchain/
 
 1. `AutoSkillchain` フォルダーを `Windower4/addons/` に置きます（`libs/sc_json.lua` を含めて）。
 2. ゲーム内で `//lua load AutoSkillchain` を実行します。
-3. 読み込むと `loaded v5.3 -- ... (ルート1適用中・全体機能: ON)` のように出ます。`全体機能: OFF` と出たら、前に `//sc stop` で止めたままです。`//sc start` で再開します。
+3. 読み込むと `loaded v5.3.1 -- ... (ルート1適用中・全体機能: ON)` のように出ます。`全体機能: OFF` と出たら、前に `//sc stop` で止めたままです。`//sc start` で再開します。
 
 ---
 
@@ -52,7 +52,7 @@ AutoSkillchain/
 * 送る直前に次を確かめ、合わなければ予約を取り消します: 戦闘中か・行動不能（睡眠・石化・スタン・魅了・アムネジア・テラー・ララバイ）でないか・`<t>` が予約した敵のままか・敵の HP が 0 でないか。
 * 敵が遠い（3.5 ＋ 敵の大きさが 2 を超えた分）あいだは送らずに待ちます。TP が 1000 に届かないあいだも待ちます。
 * 送ってから 8 秒たっても着弾を確かめられなければ、予約を取り消します。
-* 送った `/ws` がゲームに断られた（射程外・TP 不足・対象が見えないなど）ときは、予約と進行を取り消します（送り直しません）。
+* 送った WS の着弾を8秒以内に確認できなければ予約を終了します。
 * 次のどれかで、予約と進行を取り消します: 交戦の解除・戦闘不能・ジョブの変更・エリアの移動・ログアウト・アンロード・`//sc stop`・`//sc reset`・ルートの切り替えと読み直し・ルートに無い WS が入った。
 
 ### カスタムルート（`mode: custom`）
@@ -76,9 +76,6 @@ AutoSkillchain/
 
 カスタムルートには、通算の上限はありません（段の数だけ撃ちます。段の上限は 10）。
 
-### 草薙剣モード（個人用）
-侍が草薙剣を装備しているあいだ、ルートの代わりに「鳳蝶／轟天 → 無名」を連携が続くかぎり撃つモードです（上限 6 回）。作者の個人用の機能で、**公開版には含めません**。
-
 ---
 
 ## 💻 コマンド（`//sc`・`//autosc`・`//autoskillchain`）
@@ -97,7 +94,6 @@ AutoSkillchain/
 | `//sc delay <1.0〜8.0>` | 待ち時間を、すべてのルートで上書きする |
 | `//sc delay off` | 待ち時間の上書きをやめる（ルートの `delay_seconds` → 基本設定の順に戻る） |
 | `//sc party` / `//sc solo` | パーティーの人の始点・自分の始点の ON / OFF |
-| `//sc kusanagi [on\|off]` | 草薙剣モードの ON / OFF（個人用） |
 | `//sc status` | 今の設定を表示する |
 | `//sc reload` | アドオンを読み込み直す（全自動の通算・送った技の記録も消える） |
 
@@ -114,6 +110,8 @@ AutoSkillchain/
 
 ## 📜 更新履歴
 
+* **v5.3.1**
+  * 拒否通知が遅れて届いても次の予約を取り消さず、同じ初段 WS で別の敵に連携を開始できます。ゲーム内未確認です。
 * **v5.3**
   * **安全の強化**
     * 全自動の上限を新しく設けた: 1 回の連携 6 回・75 秒、通算 300 秒に 12 回、PT の始点だけで 600 秒。
@@ -151,6 +149,8 @@ Version 5.3 follows openers from your party, checks the target before sending a 
 
 - [【FF11-Windower】WS連携自動化アドオン「ws_link」の導入方法](https://ff11-windower.com/%E3%80%90ff11-windower%E3%80%91ws%E9%80%A3%E6%90%BA%E8%87%AA%E5%8B%95%E5%8C%96%E3%82%A2%E3%83%89%E3%82%AA%E3%83%B3%E3%80%8Cws_link%E3%80%8D%E3%81%AE%E5%B0%8E%E5%85%A5%E6%96%B9%E6%B3%95%EF%BC%88/)
 - [soug さんの記事一覧](https://ff11-windower.com/author/soug/)
+
+v5.3.1 prevents delayed rejection messages from canceling a later reservation and distinguishes identical opening weapon skills on different targets. Tested in simulation; in-game verification is pending.
 
 ## 不具合・動作報告 / Feedback
 
