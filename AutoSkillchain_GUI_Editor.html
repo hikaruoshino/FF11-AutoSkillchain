@@ -252,17 +252,29 @@
 <div class="container">
     <header>
         <div>
-            <h1>侍専用 AutoSkillchain v4.0 - GUI 連携ルートエディタ</h1>
+            <h1>侍専用 AutoSkillchain v5.3 - GUI 連携ルートエディタ</h1>
             <div class="subtitle">視覚的に好みの連携ルート（3〜5段）を作成・編集・即時反映</div>
         </div>
         <div class="btn-group">
+            <button id="reopen-btn" style="display:none;" onclick="reopenLast()">🕘 前回のファイルを開く</button>
             <label class="file-label">
                 📂 JSONを開く
                 <input type="file" id="file-input" accept=".json">
             </label>
-            <button class="btn-primary" onclick="downloadJSON()">💾 JSONを保存 / ダウンロード</button>
+            <button class="btn-primary" id="save-btn" onclick="saveInPlace()">💾 JSONを保存 / ダウンロード</button>
+            <button id="save-as-btn" style="display:none;" onclick="saveAs()">📝 名前を付けて保存</button>
         </div>
     </header>
+
+    <!-- 開く・保存の補助 (保存先のパスのコピー・状態の表示) -->
+    <div class="panel" id="file-assist" style="display:none; padding:12px 20px;">
+        <div id="target-path-row" style="display:none; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span style="font-size:0.85rem; color:var(--text-muted);">保存先のパス (初回はダイアログのファイル名の欄に貼り付け):</span>
+            <input type="text" id="target-path" readonly style="flex:1; min-width:280px;">
+            <button onclick="copyTargetPath()">📋 コピー</button>
+        </div>
+        <div id="file-status" style="font-size:0.85rem; color:var(--accent-green); margin-top:6px;"></div>
+    </div>
 
     <!-- ルート選択タブ -->
     <div class="route-tabs" id="route-tabs">
@@ -313,10 +325,11 @@
         <textarea id="json-preview" readonly></textarea>
 
         <div class="guide-box">
-            📌 <strong>配置・適用手順:</strong><br>
-            1. 上記の **「JSONを保存 / ダウンロード」** ボタンを押して `sc_routes.json` を保存します。<br>
-            2. Windower 4 のフォルダ: <code>Windower4/addons/AutoSkillchain/data/sc_routes.json</code> へ配置します。<br>
-            3. FF11ゲーム内で <code>//sc route reload</code> または <code>//sc reload</code> を実行すると即座に適用されます。
+            📌 <strong>保存・適用の手順:</strong><br>
+            1. 「JSONを開く」で <code>Windower4/addons/AutoSkillchain/data/sc_routes.json</code> を開きます (初回は上の「保存先のパス」をコピーして、ダイアログのファイル名の欄に貼り付けると早く開けます。2 回目からは前回のフォルダが出ます)。<br>
+            2. 編集して「JSONを保存」を押すと、開いたファイルへそのまま上書きします (対応していないブラウザでは従来どおりダウンロードになるので、上のフォルダへ置いてください)。<br>
+            3. FF11ゲーム内で <code>//sc route reload</code> または <code>//sc reload</code> を実行すると適用されます。<br>
+            4. 使うルートの選択は ゲーム内の <code>//sc route &lt;番号&gt;</code> で行います (JSON の <code>active_route</code> は、設定の番号が JSON に無いときだけ使われます)。
         </div>
     </div>
 </div>
@@ -591,32 +604,291 @@ function copyToClipboard() {
     alert('JSONコードをクリップボードにコピーしました！');
 }
 
-// ファイル読み込み処理
+// 読み込んだ JSON の文字列を確かめて画面へ反映する (新旧どちらの読み込みからも呼ぶ)。反映できたら true
+function applyLoadedText(text) {
+    try {
+        const parsed = JSON.parse(text);
+        if (parsed && parsed.routes) {
+            routesData = parsed;
+            currentTabId = routesData.active_route || 1;
+            init();
+            alert('JSON設定ファイルを正常に読み込みました！');
+            return true;
+        } else {
+            alert('無効な sc_routes.json 形式です。');
+        }
+    } catch (err) {
+        alert('JSONパースエラー: ' + err.message);
+    }
+    return false;
+}
+
+// ファイル読み込み処理 (従来の方法: File System Access API に対応していないブラウザ用)
 document.getElementById('file-input').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = function(evt) {
-        try {
-            const parsed = JSON.parse(evt.target.result);
-            if (parsed && parsed.routes) {
-                routesData = parsed;
-                currentTabId = routesData.active_route || 1;
-                init();
-                alert('JSON設定ファイルを正常に読み込みました！');
-            } else {
-                alert('無効な sc_routes.json 形式です。');
-            }
-        } catch (err) {
-            alert('JSONパースエラー: ' + err.message);
+        if (applyLoadedText(evt.target.result)) {
+            // 従来の方法で開いたファイルには上書きできないので、前に開いたファイルのハンドルは手放す
+            fileHandle = null;
+            updateFileUi();
         }
     };
     reader.readAsText(file);
+    e.target.value = '';
 });
+
+// ===== 開く・保存で前回のフォルダを出す (File System Access API) =====
+// ブラウザの決まりで、任意のフォルダを最初から出すことはできない。id ごとに前回のフォルダを覚え、
+// 開いたファイルのハンドルを IndexedDB に残して、2 回目からはそのフォルダから開く・同じファイルへ上書きする。
+const FS_PICKER_ID = 'asc-sc-routes';
+const FS_DB_NAME = 'asc-sc-routes';
+const FS_STORE = 'handles';
+const FS_KEY = 'last';
+const FS_FILE_NAME = 'sc_routes.json';
+const FS_TYPES = [{ description: 'JSON', accept: { 'application/json': ['.json'] } }];
+let fileHandle = null;      // 今開いているファイル (上書き保存の先)
+let storedHandle = null;    // IndexedDB に残っている前回のファイル
+let forceLegacyOpen = false; // 新しい方法で開けなかったときは、次の 1 回を従来の方法で開く
+
+function fsSupported() {
+    return typeof window.showOpenFilePicker === 'function' && typeof window.showSaveFilePicker === 'function';
+}
+
+function setFileStatus(text, isError) {
+    document.getElementById('file-assist').style.display = '';
+    const el = document.getElementById('file-status');
+    el.textContent = text;
+    el.style.color = isError ? 'var(--accent-red)' : 'var(--accent-green)';
+}
+
+function timeText() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+function updateFileUi() {
+    const supported = fsSupported();
+    document.getElementById('save-as-btn').style.display = supported ? '' : 'none';
+    const reopenBtn = document.getElementById('reopen-btn');
+    if (supported && storedHandle) {
+        reopenBtn.textContent = '🕘 前回のファイルを開く (' + storedHandle.name + ')';
+        reopenBtn.style.display = '';
+    } else {
+        reopenBtn.style.display = 'none';
+    }
+    document.getElementById('save-btn').textContent = fileHandle
+        ? '💾 上書き保存 (' + fileHandle.name + ')'
+        : '💾 JSONを保存 / ダウンロード';
+}
+
+// --- IndexedDB (使えないときは「前回のファイル」ボタンを出さないだけ) ---
+function idbOpen() {
+    return new Promise((resolve, reject) => {
+        if (!window.indexedDB) { reject(new Error('IndexedDB を使えません')); return; }
+        let req;
+        try { req = window.indexedDB.open(FS_DB_NAME, 1); } catch (e) { reject(e); return; }
+        req.onupgradeneeded = () => { req.result.createObjectStore(FS_STORE); };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function idbGetHandle() {
+    try {
+        const db = await idbOpen();
+        return await new Promise((resolve) => {
+            const req = db.transaction(FS_STORE, 'readonly').objectStore(FS_STORE).get(FS_KEY);
+            req.onsuccess = () => { db.close(); resolve(req.result || null); };
+            req.onerror = () => { db.close(); resolve(null); };
+        });
+    } catch (e) {
+        return null;
+    }
+}
+
+async function idbSetHandle(handle) {
+    try {
+        const db = await idbOpen();
+        await new Promise((resolve) => {
+            const tx = db.transaction(FS_STORE, 'readwrite');
+            tx.objectStore(FS_STORE).put(handle, FS_KEY);
+            tx.oncomplete = () => { db.close(); resolve(); };
+            tx.onerror = () => { db.close(); resolve(); };
+            tx.onabort = () => { db.close(); resolve(); };
+        });
+    } catch (e) {
+        // 覚えられなくても、今の画面での読み書きはそのまま続ける
+    }
+}
+
+async function rememberHandle(handle) {
+    fileHandle = handle;
+    storedHandle = handle;
+    await idbSetHandle(handle);
+    updateFileUi();
+}
+
+// 許可を確かめ、無ければ求める。許可されたら true
+async function ensurePermission(handle, mode) {
+    const opts = { mode: mode };
+    if (typeof handle.queryPermission === 'function' && (await handle.queryPermission(opts)) === 'granted') return true;
+    if (typeof handle.requestPermission === 'function') return (await handle.requestPermission(opts)) === 'granted';
+    return false;
+}
+
+// startIn に前回のハンドルを渡してピッカーを開く。ハンドルで失敗したら (キャンセル以外) startIn 無しでもう一度
+async function callPicker(pickerFn, baseOpts) {
+    const startHandle = fileHandle || storedHandle;
+    const opts = Object.assign({}, baseOpts, { startIn: startHandle || 'documents' });
+    try {
+        return await pickerFn(opts);
+    } catch (err) {
+        if (err && err.name === 'AbortError') throw err;
+        if (!startHandle) throw err;
+        return await pickerFn(Object.assign({}, baseOpts));
+    }
+}
+
+async function openViaPicker() {
+    let handles;
+    try {
+        handles = await callPicker((o) => window.showOpenFilePicker(o), { id: FS_PICKER_ID, types: FS_TYPES, multiple: false });
+    } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        forceLegacyOpen = true;
+        setFileStatus('ファイルを開けませんでした (' + (err && err.message ? err.message : err) + ')。もう一度「JSONを開く」を押すと従来の方法で開きます。', true);
+        return;
+    }
+    const handle = handles && handles[0];
+    if (!handle) return;
+    try {
+        const file = await handle.getFile();
+        const text = await file.text();
+        if (applyLoadedText(text)) {
+            await rememberHandle(handle);
+            setFileStatus('開きました: ' + handle.name + ' (' + timeText() + ')', false);
+        }
+    } catch (err) {
+        setFileStatus('ファイルを読めませんでした (' + (err && err.message ? err.message : err) + ')', true);
+    }
+}
+
+async function reopenLast() {
+    const handle = storedHandle;
+    if (!handle) return;
+    try {
+        if (!(await ensurePermission(handle, 'readwrite'))) {
+            setFileStatus('前回のファイルへの許可が得られませんでした。「JSONを開く」から開いてください。', true);
+            return;
+        }
+        const file = await handle.getFile();
+        const text = await file.text();
+        if (applyLoadedText(text)) {
+            await rememberHandle(handle);
+            setFileStatus('開きました: ' + handle.name + ' (' + timeText() + ')', false);
+        }
+    } catch (err) {
+        setFileStatus('前回のファイルを開けませんでした (' + (err && err.message ? err.message : err) + ')。「JSONを開く」から開いてください。', true);
+    }
+}
+
+// 文字列をハンドルのファイルへ書き込む (UTF-8・BOM 無し)
+async function writeToHandle(handle, text) {
+    const writable = await handle.createWritable();
+    await writable.write(text);
+    await writable.close();
+}
+
+async function saveInPlace() {
+    if (!fsSupported()) { downloadJSON(); return; }
+    if (!fileHandle) { await saveAs(); return; }
+    const jsonStr = JSON.stringify(routesData, null, 2);
+    try {
+        if (!(await ensurePermission(fileHandle, 'readwrite'))) throw new Error('書き込みの許可が得られませんでした');
+        await writeToHandle(fileHandle, jsonStr);
+        setFileStatus('上書き保存しました: ' + fileHandle.name + ' (' + timeText() + ')', false);
+    } catch (err) {
+        setFileStatus('上書き保存できませんでした (' + (err && err.message ? err.message : err) + ')。従来どおりダウンロードします。', true);
+        downloadJSON();
+    }
+}
+
+async function saveAs() {
+    if (!fsSupported()) { downloadJSON(); return; }
+    const jsonStr = JSON.stringify(routesData, null, 2);
+    let handle;
+    try {
+        handle = await callPicker((o) => window.showSaveFilePicker(o), { id: FS_PICKER_ID, types: FS_TYPES, suggestedName: FS_FILE_NAME });
+    } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        setFileStatus('保存先を選べませんでした (' + (err && err.message ? err.message : err) + ')。従来どおりダウンロードします。', true);
+        downloadJSON();
+        return;
+    }
+    try {
+        await writeToHandle(handle, jsonStr);
+        await rememberHandle(handle);
+        setFileStatus('保存しました: ' + handle.name + ' (' + timeText() + ')', false);
+    } catch (err) {
+        setFileStatus('保存できませんでした (' + (err && err.message ? err.message : err) + ')。従来どおりダウンロードします。', true);
+        downloadJSON();
+    }
+}
+
+// 「JSONを開く」: 対応ブラウザでは従来のファイル選択の代わりにピッカーを出す
+document.getElementById('file-input').addEventListener('click', function(e) {
+    if (!fsSupported()) return;
+    if (forceLegacyOpen) { forceLegacyOpen = false; return; }
+    e.preventDefault();
+    openViaPicker();
+});
+
+// file:// で開いたときだけ、目的のファイルのフルパス (この HTML のフォルダ + data\sc_routes.json) を表示する
+function targetPathFromLocation() {
+    if (location.protocol !== 'file:') return null;
+    let path;
+    try { path = decodeURIComponent(location.pathname); } catch (e) { path = location.pathname; }
+    if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);           // /C:/... -> C:/...
+    else if (location.host) path = '//' + location.host + path;     // UNC (file://server/share/...)
+    path = path.replace(/\//g, '\\');
+    const dir = path.slice(0, path.lastIndexOf('\\') + 1);
+    return dir + 'data\\' + FS_FILE_NAME;
+}
+
+function copyTargetPath() {
+    const input = document.getElementById('target-path');
+    const done = () => setFileStatus('パスをコピーしました。ダイアログのファイル名の欄に貼り付けてください。', false);
+    const legacyCopy = () => {
+        input.select();
+        try { document.execCommand('copy'); done(); } catch (e) { setFileStatus('コピーできませんでした。パスを選んで手でコピーしてください。', true); }
+    };
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(input.value).then(done, legacyCopy);
+    } else {
+        legacyCopy();
+    }
+}
+
+async function initFileAssist() {
+    const target = targetPathFromLocation();
+    if (target) {
+        document.getElementById('target-path').value = target;
+        document.getElementById('target-path-row').style.display = 'flex';
+        document.getElementById('file-assist').style.display = '';
+    }
+    if (fsSupported()) {
+        storedHandle = await idbGetHandle();
+    }
+    updateFileUi();
+}
 
 // 初期起動
 init();
+initFileAssist();
 </script>
 
 </body>
