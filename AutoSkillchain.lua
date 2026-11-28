@@ -1,6 +1,6 @@
 _addon.name = 'AutoSkillchain'
 _addon.author = 'hikaruoshino'
-_addon.version = '5.3.2'
+_addon.version = '5.4.4'
 _addon.commands = {'sc', 'autoskillchain', 'autosc'}
 
 local config = require('config')
@@ -14,6 +14,7 @@ local defaults = {
     enabled = true,
     party_mode = true,
     solo_mode = true,
+    focus = true,             -- 同じ敵に自分以外のPCが2人以上なら連携より集中攻撃を優先
     delay_seconds = 6.0,
     delay_override = 0,       -- //sc delay <秒> で決めた待機秒数 (1.0〜8.0)。0 = 使わない (ルートの delay_seconds → delay_seconds の順)
     block_seconds = 1.5,
@@ -695,7 +696,7 @@ local INCAPACITATED = {[2] = true, [7] = true, [10] = true, [14] = true, [16] = 
 -- 1 件 = 1 回の送信 {ws, target_id, at, token}。token は送った予約の番号 (st.token)。
 -- 着弾は送った順に 1 件ずつ結びつけ、結びついた記録の token が今の予約のときだけ確認 (confirm) にする
 -- 0x029 の失敗通知は個々の送信に結び付かないため、着弾がなければ LAND_TIMEOUT で予約を捨てる
--- ゾーン移動・ログアウト・アンロード・//sc stop で消す
+-- ゾーン移動・ログアウト・アンロードで消す
 local sent_log = {}
 local saw_injected_ws = false
 local function sent_log_clear()
@@ -772,6 +773,47 @@ local function auto_total_count(now)
     return #auto_total
 end
 
+local focus = {next_poll=0}
+function focus.required_tp(now)
+    return focus.normal_tp_at and now >= focus.normal_tp_at and 1500 or 2550
+end
+local focus_slots = {'p1','p2','p3','p4','p5','a10','a11','a12','a13','a14','a15','a20','a21','a22','a23','a24','a25'}
+function focus.eligible(player, target, count_all)
+    if not settings.enabled or not settings.focus or not player or player.status ~= 1 or player.main_job ~= 'SAM'
+        or not target or target.spawn_type ~= 16 or not target.index or target.index <= 0 or (target.hpp or 0) <= 0 then return false end
+    if not get_active_route() then return false end
+    local party = windower.ffxi.get_party()
+    if not party then return false end
+    local first
+    local seen = count_all and {} or nil
+    local count = 0
+    for _, slot in ipairs(focus_slots) do
+        local mob = party[slot] and party[slot].mob
+        if mob and mob.is_npc == false and mob.id and mob.id ~= player.id and mob.target_index == target.index then
+            if seen then
+                if not seen[mob.id] then seen[mob.id] = true; count = count + 1 end
+            else
+                if first and first ~= mob.id then return true end
+                first = mob.id
+            end
+        end
+    end
+    return count >= 2, count
+end
+
+function focus.weapon_skill()
+    local eq = windower.ffxi.get_items('equipment')
+    if type(eq) ~= 'table' or not eq.main or eq.main == 0 then return end
+    local item = windower.ffxi.get_items(eq.main_bag, eq.main)
+    local row = item and res.items[item.id]
+    if not row then return end
+    local ws
+    if row.en == 'Dojikiri Yasutsuna' then ws = '十二之太刀・照破'
+    elseif row.skill == 10 then ws = '祖之太刀・不動' end
+    local usable = ws and usable_ws_ids()
+    if usable and usable[ws_id_by_name[ws]] then return ws end
+end
+
 -- 撃つ直前の確認。戻り値: 'ok' と player / 'wait' と player (届かない) / 'cancel' と理由
 -- (valid_target は使わない: 大きな敵で、手動なら通るのに false になることがあるため。OmniChain と同じ)
 local function can_fire(spec, now)
@@ -785,6 +827,13 @@ local function can_fire(spec, now)
         end
     end
     local t = windower.ffxi.get_mob_by_target('t')
+    if spec.focus then
+        if not focus.eligible(player, t) or not t.distance or focus.weapon_skill() ~= spec.ws then
+            return 'cancel', '集中攻撃の対象・人数・装備が変わったので予約を取り消しました。'
+        end
+    elseif focus.eligible(player, t) then
+        return 'cancel', '集中攻撃の人数に達したので連携の予約を取り消しました。'
+    end
     if not t or t.id ~= spec.target_id then return 'cancel', '予約した相手がターゲットでなくなったので、予約を取り消しました。' end
     if t.hpp and t.hpp <= 0 then return 'cancel', '予約した相手が倒れたので、予約を取り消しました。' end
     if t.distance then
@@ -836,14 +885,20 @@ local function schedule_ws(spec)
             end
             last = verdict
             local tp = verdict == 'ok' and info.vitals and info.vitals.tp or 0
-            if elapsed >= spec.delay - 1e-6 and verdict == 'ok' and tp >= need then
+            if elapsed >= spec.delay - 1e-6 and verdict == 'ok' and tp >= (spec.focus and focus.required_tp(now) or need) then
                 local prefix = spec.is_solo and '【一人連携】' or '【PT連携】'
                 local label_str = spec.label and (' [' .. spec.label .. ']') or ''
                 local sc_str = spec.sc_result and (' (目標:' .. spec.sc_result .. ')') or ''
                 msg(prefix .. label_str .. ' TP:' .. tp .. ' で次技自動発動 -> [' .. spec.ws .. ']' .. sc_str, 209)
                 st.pending.sent_at = now
                 sent_log_add(spec.ws, spec.target_id, now, my)
-                if spec.is_auto then auto_total[#auto_total + 1] = now end
+                if spec.is_auto or spec.focus then auto_total[#auto_total + 1] = now end
+                if spec.focus then
+                    focus.waiting = true
+                    focus.count = focus.count + 1
+                    focus.first = focus.first or now
+                    focus.ready_at = now + 2
+                end
                 windower.send_command(sjis('input /ws "' .. spec.ws .. '" <t>'))
                 break
             end
@@ -857,6 +912,43 @@ local function schedule_ws(spec)
         end
     end, 0.01)
 end
+
+windower.register_event('prerender', function()
+    if not settings.enabled or not settings.focus then return end
+    local now = os.clock()
+    if now < focus.next_poll then return end
+    focus.next_poll = now + 0.25
+    local player = windower.ffxi.get_player()
+    local target = windower.ffxi.get_mob_by_target('t')
+    local eligible, count = focus.eligible(player, target, true)
+    if not eligible then
+        if count ~= nil and focus.target == target.id then
+            msg(('通常連携の始点待ちへ：敵ID=%s 同じ敵を狙う味方PC=%d人'):format(target.id, count), 158)
+        end
+        focus.target = nil
+        if st.mode == 'focus' and st.pending and not st.pending.sent_at then cancel_all(nil) end
+        return
+    end
+    if st.pending and st.pending.sent_at then return end
+    if focus.target ~= target.id then
+        focus.target, focus.count, focus.first, focus.waiting = target.id, 0, nil, false
+        focus.normal_tp_at = now + 6
+        msg(('集中攻撃へ：敵ID=%s 同じ敵を狙う味方PC=%d人'):format(target.id, count), 158)
+    end
+    if st.mode == 'focus' then return end
+    if is_running() then cancel_all('同じ敵を狙う味方が2人以上のため、集中攻撃に切り替えます。', 158) end
+    if focus.waiting or now < (focus.ready_at or 0) or focus.count >= AUTO_MAX_WS
+        or (focus.first and now - focus.first >= AUTO_MAX_SEC) or auto_total_count(now) >= AUTO_TOTAL_MAX
+        or not player.vitals or (player.vitals.tp or 0) < focus.required_tp(now) or not target.distance then return end
+    local reach = settings.ws_reach + math.max(0, (tonumber(target.model_size) or 0) - 2)
+    if target.distance > reach * reach then return end
+    for _, buff in ipairs(player.buffs or {}) do if INCAPACITATED[buff] then return end end
+    local ws = focus.weapon_skill()
+    if ws then
+        st.mode = 'focus'
+        schedule_ws{focus=true, ws=ws, target_id=target.id, delay=0, label='集中攻撃'}
+    end
+end)
 
 -- 技を使った人の種類: 'me' (自分) / 'party' (自分の PT の p1〜p5。フェイスを含む・アライアンスは含めない) / 'other'
 local PARTY_KEYS = {'p1', 'p2', 'p3', 'p4', 'p5'}
@@ -1128,11 +1220,27 @@ windower.register_event('action', function(act)
     -- (前の予約で送った技の着弾では進めない)
     -- 始めるのは自分 (solo_mode) / PT (party_mode)。止める (取り消し) のは誰の技でも
     local kind = actor_kind(act.actor_id, player)
+    if kind == 'me' and focus.target == my_target.id and landed_on(act, my_target.id) then
+        focus.normal_tp_at = now + 6
+    end
     local pend = st.pending
     local sent = kind == 'me' and sent_log_take(ws_display_name, my_target.id, now) or nil
     local confirm = sent ~= nil and sent.requests and sent.command_seen and not sent.ambiguous and sent.token == st.token
         and pend ~= nil and pend.sent_at ~= nil and pend.ws == ws_display_name
         and st.target_id == my_target.id
+    if st.mode == 'focus' and sent then
+        focus.waiting = not (confirm and landed_on(act, my_target.id))
+        cancel_all(nil)
+        return
+    end
+    if focus.eligible(player, my_target) then
+        if confirm then cancel_all(nil) end
+        return
+    end
+    if st.mode == 'focus' then
+        if pend and pend.sent_at then return end
+        cancel_all(nil)
+    end
     -- 自分が送った技の着弾は、確認 (confirm) でなければ捨てる (取り消しのあとに着弾した自動の技を、新しい始点にしない)
     -- 進行中なら、それも取り消す (送ったあと着弾の前に入り直して予約が新しくなった: 古い前提のまま次を送らない)
     if sent and not confirm then
@@ -1157,7 +1265,20 @@ windower.register_event('addon command', function(...)
     local args = {...}
     local cmd = args and args[1] and args[1]:lower() or 'help'
 
+    if cmd == 'focus' then
+        local value = args[2] and args[2]:lower()
+        if value == 'on' or value == 'off' then
+            settings.focus = value == 'on'
+            if st.mode == 'focus' then cancel_all(nil) end
+            focus.target = nil
+            config.save(settings)
+        end
+        msg('集中攻撃: ' .. (settings.focus and 'ON' or 'OFF') .. ' (//sc focus on|off)')
+        return
+    end
+
     if cmd == 'reset' or cmd == 'clear' then
+        focus.target = nil
         cancel_all(nil)
         saw_injected_ws = false
         msg('連携ステップを最初の【初段待機状態 (Step 1)】へ手動リセットしました。', 158)
@@ -1166,8 +1287,10 @@ windower.register_event('addon command', function(...)
 
     -- 中断: 予約と進行を取り消して、全体を OFF にする (//sc start で戻す)
     if cmd == 'stop' or cmd == 'abort' or cmd == 'off' then
+        focus.target = nil
         cancel_all(nil)
-        sent_log_clear()
+        saw_injected_ws = false
+        sent_log_prune(os.clock())
         auto_total_clear()
         auto_party_clear()
         settings.enabled = false
@@ -1228,6 +1351,8 @@ windower.register_event('addon command', function(...)
             end
         elseif sub == 'fix' then
             if fix_routes(args[3] and args[3]:lower() == 'confirm') then cancel_all(nil) end
+        else
+            msg('不明な route サブコマンドです: ' .. tostring(sub) .. ' (show / 番号 / reload / fix)', 123)
         end
         return
     elseif cmd == 'toggle' then
@@ -1263,6 +1388,7 @@ windower.register_event('addon command', function(...)
         local active_r = get_active_route()
         msg('==================================================')
         msg('  [AutoSkillchain v' .. _addon.version .. '] 設定ステータス')
+        msg('  ・集中攻撃: ' .. (settings.focus and 'ON' or 'OFF') .. '（味方PC2人以上・6秒経過でTP1500、早撃ちはTP2550）')
         msg('--------------------------------------------------')
         msg('  ・全体機能: ' .. (settings.enabled and 'ON' or 'OFF'))
         msg('  ・選択ルート: ルート ' .. tostring(settings.active_route) .. ' (' .. (active_r and active_r.name or 'ありません') .. ')')
@@ -1278,6 +1404,7 @@ windower.register_event('addon command', function(...)
     else
         msg('==================================================')
         msg('  [AutoSkillchain v' .. _addon.version .. '] コマンドヘルプ')
+        msg('  //sc focus on|off : 集中攻撃を連携より優先')
         msg('--------------------------------------------------')
         msg('  //sc route <番号> : 連携ルートの切り替え (sc_routes.json にある番号)')
         msg('  //sc route        : 選択中のルートを表示')
@@ -1301,6 +1428,7 @@ end)
 -- (予約が残ると、ゾーン移動後の別の敵へ <t> で撃つため)
 -- (送った技の記録と全自動の通算も消す)
 local function clear_all_records()
+    focus.target, focus.ready_at = nil, nil
     sent_log_clear()
     auto_total_clear()
     auto_party_clear()
@@ -1315,11 +1443,13 @@ windower.register_event('unload', function() cancel_all(nil); clear_all_records(
 -- 交戦の解除は戦闘の終わり: PT の始点だけの連続時間も数え直す (全自動の回数と時間は cancel_all で戻る。通算は戻さない)
 windower.register_event('status change', function(new_status)
     if new_status ~= 1 then
+        focus.target = nil
         cancel_all('交戦状態でなくなったので、予約と進行を取り消しました。', 158)
         auto_party_clear()
     end
 end)
 windower.register_event('job change', function()
+    focus.target = nil
     cancel_all('ジョブが変わったので、予約と進行を取り消しました。', 158)
 end)
 
