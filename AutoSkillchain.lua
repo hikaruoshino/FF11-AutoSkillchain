@@ -1,6 +1,6 @@
 _addon.name = 'AutoSkillchain'
 _addon.author = 'hikaruoshino'
-_addon.version = '5.4.4'
+_addon.version = '5.5.0'
 _addon.commands = {'sc', 'autoskillchain', 'autosc'}
 
 local config = require('config')
@@ -20,26 +20,33 @@ local defaults = {
     block_seconds = 1.5,
     ws_reach = 3.5,           -- 近接の技が届く距離 (敵の model_size が 2 を超えた分は足す)。届かないあいだは撃たずに待つ
     active_route = 1,
+    kusanagi = false,         -- 侍が草薙剣を装備している間: 鳳蝶/轟天 → 無名を連携が続くかぎり
+    kusanagi_delay = 5.0,     -- 草薙剣モードの、前の技を見てから次の無名を撃つまでの秒数
 }
 
 local settings = config.load(defaults)
 
 -- 設定の数値の範囲。範囲外・数でない・NaN のときは既定に戻す (読み込みのときに 1 回だけ知らせる)
 local SETTING_RANGES = {
-    {'delay_seconds', 1.0, 8.0},
+    {'delay_seconds', 1.0, 8.0}, {'kusanagi_delay', 1.0, 8.0},
     {'block_seconds', 0.5, 5.0}, {'ws_reach', 1.0, 10.0},
 }
 local settings_fixed = {}
-for _, r in ipairs(SETTING_RANGES) do
-    local key, lo, hi = r[1], r[2], r[3]
-    local v = tonumber(settings[key])
-    if not v or v ~= v or v < lo or v > hi then
-        settings_fixed[#settings_fixed + 1] = key .. ' (' .. tostring(settings[key]) .. ' → ' .. tostring(defaults[key]) .. ')'
-        settings[key] = defaults[key]
-    else
-        settings[key] = v
+local function validate_settings()
+    settings_fixed = {}
+    for _, r in ipairs(SETTING_RANGES) do
+        local key, lo, hi = r[1], r[2], r[3]
+        local v = tonumber(settings[key])
+        if not v or v ~= v or v < lo or v > hi then
+            settings_fixed[#settings_fixed + 1] = key .. ' (' .. tostring(settings[key]) .. ' → ' .. tostring(defaults[key]) .. ')'
+            settings[key] = defaults[key]
+        else
+            settings[key] = v
+        end
     end
 end
+validate_settings()
+if config.register then config.register(settings, validate_settings) end
 
 -- UTF-8 -> Shift-JIS 安全変換ヘルパー
 local function sjis(s)
@@ -178,7 +185,7 @@ local function validate_routes(parsed)
     if type(parsed) ~= 'table' then return nil, 'JSON の最上位がオブジェクトではありません', warns end
     local n = array_length(parsed.routes)
     if not n or n < 1 or n > MAX_ROUTES then
-        return nil, '"routes" が 1〜' .. MAX_ROUTES .. ' 件の配列ではありません', warns
+        return nil, '"routes" が 1～' .. MAX_ROUTES .. ' 件の配列ではありません', warns
     end
     local out, seen = {}, {}
     for i = 1, n do
@@ -188,7 +195,7 @@ local function validate_routes(parsed)
         if type(r) ~= 'table' then
             warn('routes の ' .. i .. ' 件目がオブジェクトではないので飛ばします'); ok = false
         elseif type(id) ~= 'number' or id < 1 or id > MAX_ROUTE_ID or id ~= math.floor(id) then
-            warn('routes の ' .. i .. ' 件目の id (' .. disp(id) .. ') が 1〜' .. MAX_ROUTE_ID .. ' の整数ではないので飛ばします'); ok = false
+            warn('routes の ' .. i .. ' 件目の id (' .. disp(id) .. ') が 1～' .. MAX_ROUTE_ID .. ' の整数ではないので飛ばします'); ok = false
         elseif seen[id] then
             warn('ルート ' .. id .. ' の id が重複しているので、' .. i .. ' 件目を飛ばします'); ok = false
         elseif r.mode ~= 'custom' and r.mode ~= 'auto' then
@@ -199,14 +206,14 @@ local function validate_routes(parsed)
             if type(r.delay_seconds) == 'number' and r.delay_seconds >= 1.0 and r.delay_seconds <= 8.0 then
                 delay = r.delay_seconds
             else
-                warn('ルート ' .. id .. ' の delay_seconds (' .. disp(r.delay_seconds) .. ') が 1.0〜8.0 ではないので使いません')
+                warn('ルート ' .. id .. ' の delay_seconds (' .. disp(r.delay_seconds) .. ') が 1.0～8.0 ではないので使いません')
             end
         end
         local steps = {}
         if ok and r.mode == 'custom' then
             local sn = array_length(r.steps)
             if not sn or sn < 1 or sn > MAX_STEPS then
-                warn('ルート ' .. id .. ' の steps が 1〜' .. MAX_STEPS .. ' 件の配列ではないので飛ばします'); ok = false
+                warn('ルート ' .. id .. ' の steps が 1～' .. MAX_STEPS .. ' 件の配列ではないので飛ばします'); ok = false
             else
                 for k = 1, sn do
                     local s = r.steps[k]
@@ -258,14 +265,15 @@ local routes_data = DEFAULT_ROUTES
 
 -- 進行の状態は、この 1 つの表にまとめる。取り消しは cancel_all だけで行う
 --   token: 予約の番号 (進めると、待っている予約がすべて無効になる) / step: カスタムルートの次に待つ段 (1 = 初段待ち)
---   mode: 動いているもの (nil / 'custom' / 'auto') / target_id: 予約した相手の id
+--   mode: 動いているもの (nil / 'custom' / 'auto' / 'kusanagi' / 'kus_am') / target_id: 予約した相手の id
 --   pending: 予約中の技 {ws = 技名, sent_at = 送った時刻 (送る前は nil)} / auto_count・auto_start: 全自動の回数と始めた時刻
---   chain_prop: 全自動の直前の連携
---   fix_until: //sc route fix confirm の期限（進行を取り消しても保持する）
+--   chain_prop: 全自動の直前の連携 / kus_count・kus_prev・kus_last: 草薙剣モード (無名の回数・直前の連携・最後の予約の時刻)
+--   notice_at: 草薙剣モードの知らせを最後に出した時刻 / fix_until: //sc route fix confirm の期限 (この 2 つは取り消しでは戻さない)
 local st = {
     token = 0, step = 1, mode = nil, target_id = nil, pending = nil,
     auto_count = 0, auto_start = 0, chain_prop = nil,
-    fix_until = 0,
+    kus_count = 0, kus_prev = nil, kus_last = 0,
+    notice_at = -1000, fix_until = 0,
 }
 
 local function is_running()
@@ -283,6 +291,11 @@ local function cancel_all(reason, color)
     st.auto_count = 0
     st.auto_start = 0
     st.chain_prop = nil
+    st.kus_count = 0
+    st.kus_prev = nil
+    st.kus_last = 0
+    st.kus_am_since = nil
+    -- notice_at と fix_until は戻さない (知らせの間隔と、//sc route fix confirm の期限は進行とは別)
     if was and reason then msg(reason, color or 123) end
     return was
 end
@@ -773,8 +786,21 @@ local function auto_total_count(now)
     return #auto_total
 end
 
+-- 草薙剣モードが有効で装備中か (草薙剣モードの節で中身を入れる。撃つ直前の確認で使うので先に名前だけ置く)
+local kusanagi_active
+local kus_wait_aftermath
+local KUS_AM_TP = 3000
+local KUS_MUMEI = '絶之太刀・無名'
+local function has_any_aftermath(player)
+    player = player or windower.ffxi.get_player()
+    for _, buff_id in pairs(player and player.buffs or {}) do
+        if buff_id >= 270 and buff_id <= 273 then return true end
+    end
+    return false
+end
 local focus = {next_poll=0}
-function focus.required_tp(now)
+function focus.required_tp(now, ws, player)
+    if ws == KUS_MUMEI and not has_any_aftermath(player) then return KUS_AM_TP end
     return focus.normal_tp_at and now >= focus.normal_tp_at and 1500 or 2550
 end
 local focus_slots = {'p1','p2','p3','p4','p5','a10','a11','a12','a13','a14','a15','a20','a21','a22','a23','a24','a25'}
@@ -808,7 +834,8 @@ function focus.weapon_skill()
     local row = item and res.items[item.id]
     if not row then return end
     local ws
-    if row.en == 'Dojikiri Yasutsuna' then ws = '十二之太刀・照破'
+    if settings.kusanagi == true and row.en == 'Kusanagi' then ws = '絶之太刀・無名'
+    elseif row.en == 'Dojikiri Yasutsuna' then ws = '十二之太刀・照破'
     elseif row.skill == 10 then ws = '祖之太刀・不動' end
     local usable = ws and usable_ws_ids()
     if usable and usable[ws_id_by_name[ws]] then return ws end
@@ -833,6 +860,11 @@ local function can_fire(spec, now)
         end
     elseif focus.eligible(player, t) then
         return 'cancel', '集中攻撃の人数に達したので連携の予約を取り消しました。'
+    elseif spec.kusanagi then
+        if not get_active_route() then return 'cancel', '選択中のルートがないので予約を取り消しました。' end
+        if not kusanagi_active() then return 'cancel', '[草薙剣] 草薙剣を外した / 草薙剣モードを OFF にしたので、無名の予約を取り消しました。' end
+    elseif kusanagi_active() then
+        return 'cancel', '草薙剣モードが有効になったので、ルートの予約を取り消しました。'
     end
     if not t or t.id ~= spec.target_id then return 'cancel', '予約した相手がターゲットでなくなったので、予約を取り消しました。' end
     if t.hpp and t.hpp <= 0 then return 'cancel', '予約した相手が倒れたので、予約を取り消しました。' end
@@ -847,18 +879,18 @@ local function can_fire(spec, now)
     return 'ok', player
 end
 
--- 技を予約する。spec = {ws, sc_result, is_solo, label, delay, target_id, is_auto}
+-- 技を予約する。spec = {ws, sc_result, is_solo, label, delay, target_id, min_tp, max_wait, abort, is_auto, kusanagi}
 --   予約した時刻 (os.clock) から delay 秒たったら、確認 (can_fire) が通り TP が足りていれば /ws を 1 回だけ送る
---   受付 (delay + ACCEPT_WINDOW 秒) を過ぎたら送らずに取り消す (時間は os.clock の差で数える)
+--   受付 (delay + max_wait または ACCEPT_WINDOW 秒) を過ぎたら送らずに取り消す (時間は os.clock の差で数える)
 --   送ったあと LAND_TIMEOUT 秒たっても着弾を確かめられなければ、古い予約として取り消す
 local function schedule_ws(spec)
     st.token = st.token + 1
     local my = st.token
     st.pending = {ws = spec.ws, sent_at = nil}
     st.target_id = spec.target_id
-    local need = DEFAULT_TP
-    local interval = 0.2
-    local window = spec.delay + ACCEPT_WINDOW
+    local need = spec.min_tp or DEFAULT_TP
+    local interval = spec.max_wait and 0.5 or 0.2
+    local window = spec.max_wait or (spec.delay + ACCEPT_WINDOW)
     local start = os.clock()
     -- 時計が進まない異常に備えた、回る回数の上限 (ふつうは window / interval 回ほどで終わる)
     local max_loops = math.ceil(window / interval) * 4 + 50
@@ -867,11 +899,17 @@ local function schedule_ws(spec)
         local loops = 0
         while true do
             if my ~= st.token then return end
+            if spec.abort and spec.abort() then
+                cancel_all(spec.abort_reason)
+                return
+            end
             local now = os.clock()
             local elapsed = now - start
             loops = loops + 1
             if elapsed > window + 1e-6 or loops > max_loops then
-                if last == 'wait' then
+                if spec.max_wait then
+                    cancel_all('[草薙剣] TP ' .. need .. ' に達しなかったので、アフターマス付けの無名をやめます。')
+                elseif last == 'wait' then
                     cancel_all('相手が遠いまま受付時間を過ぎたので、[' .. spec.ws .. '] の予約を取り消しました。')
                 else
                     cancel_all('エラー: 待機時間終了後、受付時間内にTP' .. need .. 'に達しなかったため発動できませんでした。')
@@ -885,7 +923,12 @@ local function schedule_ws(spec)
             end
             last = verdict
             local tp = verdict == 'ok' and info.vitals and info.vitals.tp or 0
-            if elapsed >= spec.delay - 1e-6 and verdict == 'ok' and tp >= (spec.focus and focus.required_tp(now) or need) then
+            if verdict == 'ok' and spec.kusanagi and st.mode == 'kusanagi' and not has_any_aftermath(info) then
+                cancel_all(nil)
+                kus_wait_aftermath(spec.is_solo, spec.target_id)
+                return
+            end
+            if elapsed >= spec.delay - 1e-6 and verdict == 'ok' and tp >= (spec.focus and focus.required_tp(now, spec.ws, info) or need) then
                 local prefix = spec.is_solo and '【一人連携】' or '【PT連携】'
                 local label_str = spec.label and (' [' .. spec.label .. ']') or ''
                 local sc_str = spec.sc_result and (' (目標:' .. spec.sc_result .. ')') or ''
@@ -944,11 +987,109 @@ windower.register_event('prerender', function()
     if target.distance > reach * reach then return end
     for _, buff in ipairs(player.buffs or {}) do if INCAPACITATED[buff] then return end end
     local ws = focus.weapon_skill()
-    if ws then
+    if ws and player.vitals.tp >= focus.required_tp(now, ws, player) then
         st.mode = 'focus'
-        schedule_ws{focus=true, ws=ws, target_id=target.id, delay=0, label='集中攻撃'}
+        schedule_ws{focus=true, ws=ws, target_id=target.id, delay=0, min_tp=1500, label='集中攻撃'}
     end
 end)
+
+
+-- -----------------------------------------------------------------------------
+-- 草薙剣モード。この手元版の既定は ON、公開版 v5.5.0 の既定は OFF。
+--   侍が草薙剣 (メイン) を装備している間、ルートより先にこちらが動く:
+--   ・始点 = 十一之太刀・鳳蝶 / 参之太刀・轟天 (自分でも仲間でも)。そのあと 絶之太刀・無名 を、連携が続くかぎり撃つ
+--     (鳳蝶 → 無名 → 無名 → 無名 で 闇。轟天からは無名が 1 回多くなることがある。連携が閉じる / 失敗したら止めて、始点待ちへ戻る)
+--   ・アフターマスが無いときは、始点を見ても連携を追わず、無名を 1 回撃ってアフターマスを付ける (次の始点から連携)
+--   ・上限は 6 回 (暴走防止)。//sc reset で止まる。//sc kusanagi on|off で切り替え
+-- -----------------------------------------------------------------------------
+local KUS_OPENERS = {['十一之太刀・鳳蝶'] = true, ['参之太刀・轟天'] = true}
+local KUS_MAX_MUMEI = 6
+local KUS_STALE_SEC = 30  -- この秒数をこえて予約が無いまま st.kus_count が残っていたら、古い状態とみなす
+local KUS_NOTICE_SEC = 60 -- 「ルートは動きません」の知らせを、技を捨てたときに出す間隔
+
+local function kusanagi_equipped()
+    local value = false
+    local ok, eq = pcall(windower.ffxi.get_items, 'equipment')
+    local index = ok and type(eq) == 'table' and eq.main
+    if index and index ~= 0 then
+        local ok2, item = pcall(windower.ffxi.get_items, eq.main_bag, index)
+        local info = ok2 and item and res.items and res.items[item.id]
+        value = info ~= nil and info ~= false and info.en == 'Kusanagi'
+    end
+    return value
+end
+
+-- 草薙剣モードが有効で装備中か (このあいだ、ルートは動かない)
+kusanagi_active = function()
+    return settings.kusanagi == true and kusanagi_equipped()
+end
+
+local function kusanagi_notice_text()
+    return '草薙剣モードが有効で装備中のため、ルート ' .. tostring(settings.active_route) .. ' は動きません (//sc kusanagi off で戻す)'
+end
+
+-- 草薙剣モードが技を捨てたときの知らせ (60 秒に 1 回だけ)
+local function kusanagi_notice_throttled()
+    local now = os.clock()
+    if now - st.notice_at < KUS_NOTICE_SEC then return end
+    st.notice_at = now
+    msg(kusanagi_notice_text(), 158)
+end
+
+
+local function kus_reset(why)
+    cancel_all(why and ('[草薙剣] ' .. why) or nil, 158)
+end
+
+-- アフターマス付けの無名を、TP 3000 になるまで待ってから撃つ (最長 120 秒・付いた / 武器を替えた / OFF にしたら取り消す)
+local KUS_AM_WAIT = 120   -- アフターマス付けの無名で、TP が貯まるのを待つ最長の秒数
+kus_wait_aftermath = function(is_me, target_id, since)
+    local now = os.clock()
+    since = since or now                 -- 入り直しのときは、最初の待ちの開始時刻を持ち越す
+    local left = KUS_AM_WAIT - (now - since)
+    if left <= 0 then
+        cancel_all('[草薙剣] TP ' .. KUS_AM_TP .. ' に達しなかったので、アフターマス付けの無名をやめます。')
+        return
+    end
+    st.mode = 'kus_am'
+    st.kus_am_since = since
+    schedule_ws{
+        ws = KUS_MUMEI, is_solo = is_me, label = '草薙剣', delay = settings.kusanagi_delay or 5.0, target_id = target_id,
+        kusanagi = true,
+        min_tp = KUS_AM_TP,
+        max_wait = left,   -- TP が貯まるのを待つ秒数 (開始から KUS_AM_WAIT 秒まで)
+        abort = function() return has_any_aftermath() or not kusanagi_equipped() or not settings.enabled or settings.kusanagi == false end,   -- 付いた・武器を替えた・OFF にしたら取り消す
+        abort_reason = '[草薙剣] アフターマスが付いた / 武器を替えた / OFF にしたので、アフターマス付けの無名を取り消しました。',
+    }
+end
+
+-- 次の無名を予約する。つながらない (連携が閉じた) ときは予約せず終わる
+local function kus_next_mumei(is_me, result_name, target_id)
+    local mumei_elements = all_ws_elements[KUS_MUMEI]
+    if not st.kus_prev or not get_skillchain_result({st.kus_prev}, mumei_elements, false) then
+        kus_reset('連携が閉じたので終わります (' .. tostring(st.kus_prev) .. ')')
+        return
+    end
+    if st.kus_count >= KUS_MAX_MUMEI then
+        -- (PT の始点で入り直した直後は、もう取り消してあるので cancel_all の知らせは出ない。ここで必ず知らせる)
+        msg('[草薙剣] 無名の上限 (' .. KUS_MAX_MUMEI .. ' 回) に達したので終わります', 158)
+        cancel_all(nil)
+        return
+    end
+    -- 連携の途中でアフターマスが切れた: 連携は続けず、TP 3000 になってから無名で付け直す (ユーザー指示 2026-11-06)
+    if not has_any_aftermath() then
+        kus_reset(nil)
+        msg('[草薙剣] 連携の途中でアフターマスが切れたので、連携は続けず TP ' .. KUS_AM_TP .. ' になったら 無名 で付け直します', 158)
+        kus_wait_aftermath(is_me, target_id)
+        return
+    end
+    st.kus_count = st.kus_count + 1
+    st.kus_last = os.clock()
+    st.mode = 'kusanagi'
+    msg('[草薙剣] ' .. st.kus_count .. ' 回目の無名を予約 (' .. tostring(st.kus_prev) .. ' → ' .. string.format('%.1f', settings.kusanagi_delay or 5.0) .. ' 秒後)', 209)
+    schedule_ws{ws = KUS_MUMEI, sc_result = result_name, is_solo = is_me, label = '草薙剣',
+                delay = settings.kusanagi_delay or 5.0, target_id = target_id, kusanagi = true}
+end
 
 -- 技を使った人の種類: 'me' (自分) / 'party' (自分の PT の p1〜p5。フェイスを含む・アライアンスは含めない) / 'other'
 local PARTY_KEYS = {'p1', 'p2', 'p3', 'p4', 'p5'}
@@ -970,6 +1111,70 @@ local function can_start(kind)
     if kind == 'me' then return settings.solo_mode and true or false end
     if kind == 'party' then return settings.party_mode and true or false end
     return false
+end
+
+-- 草薙剣モード: ws_name を kind の人が使った。confirm = 自分の予約した無名の着弾
+local function handle_kusanagi(act, ws_name, kind, confirm, target_id)
+    -- 追っている途中で、最後の予約から長く経っていたら古い状態として捨てる
+    -- (TP 待ちの時間切れや着弾の取りこぼしのあと、数分後の無名を「連携の続き」と取り違えないため)
+    -- (送ったあとの予約は着弾の期限 (8 秒) で先に捨てるので、ここに来るのは送る前の予約が残ったまま
+    --  コルーチンが止まっていたときの保険)
+    if st.kus_count > 0 and os.clock() - st.kus_last > KUS_STALE_SEC then
+        kus_reset('最後の予約から ' .. KUS_STALE_SEC .. ' 秒をこえた古い状態なので捨てます')
+        confirm = false
+    end
+    -- PT (フェイスを含む) の始点で入り直すときは、無名の回数 (上限 6 回) とアフターマス付けの待ちの開始時刻を持ち越す
+    local keep_count, keep_am_since = 0, nil
+    local is_opener = KUS_OPENERS[ws_name] and can_start(kind)
+    if st.mode == 'kus_am' then
+        -- アフターマス付けの無名を待っている: 自分の無名の着弾で終わる。始点は付け直しの待ちをやり直す。ほかの人の技なら取り消す
+        if confirm then cancel_all(nil) return end
+        if kind == 'other' then kus_reset('PT 外の技 [' .. ws_name .. '] が入ったので、アフターマス付けの無名を取り消します') return end
+        if not is_opener then kusanagi_notice_throttled() return end
+        if not can_open_route(act, target_id, ws_name) then return end
+        keep_am_since = st.kus_am_since
+        cancel_all(nil)
+    elseif st.mode == 'kusanagi' then
+        -- 追っている途中
+        if confirm then
+            local result = skillchain_of(act, target_id)
+            if result then
+                msg('★連携発生 [' .. result .. '] (無名 ' .. st.kus_count .. ' 回目)', 209)
+                st.kus_prev = result
+                kus_next_mumei(kind == 'me', result, target_id)
+            else
+                kus_reset('無名で連携が発生しなかったので、始点待ちへ戻ります')
+            end
+            return
+        end
+        if not is_opener then
+            kus_reset('想定外の技 [' .. ws_name .. '] が入ったので、始点待ちへ戻ります')
+            return
+        end
+        -- 途中で始点が撃ち直された: 取り消して、始点として扱い直す
+        if kind == 'party' then keep_count = st.kus_count end
+        cancel_all(nil)
+    end
+
+    -- 追っていない: 始点を待つ (始点以外の技・始点にしない人の技は追撃しない。捨てたことは 60 秒に 1 回知らせる)
+    if not is_opener then kusanagi_notice_throttled() return end
+    if not can_open_route(act, target_id, ws_name) then return end
+    if not has_any_aftermath() then
+        msg('[草薙剣] アフターマスが無いので、連携は追わず TP ' .. KUS_AM_TP .. ' になったら 無名 でアフターマスを付けます', 209)
+        kus_wait_aftermath(kind == 'me', target_id, keep_am_since)
+        return
+    end
+    st.kus_count = keep_count
+    st.kus_prev = nil
+    for _, e in ipairs(all_ws_elements[ws_name] or {}) do
+        if get_skillchain_result({e}, all_ws_elements[KUS_MUMEI], false) then st.kus_prev = e break end
+    end
+    if not st.kus_prev then
+        msg('[草薙剣] ' .. ws_name .. ' から無名がつながらないので追いません', 123)
+        return
+    end
+    msg('[草薙剣] 始点 [' .. ws_name .. '] を検知 → 無名を続けます', 209)
+    kus_next_mumei(kind == 'me', nil, target_id)
 end
 
 -- カスタムルートの step 段目 (action_ws) を予約する。st.step はこの段の着弾を待つ番号 (= step + 1) にする
@@ -1254,6 +1459,28 @@ windower.register_event('action', function(act)
     local active_r = get_active_route()
     if not active_r then return end   -- 選択中のルートが無いときは何もしない (読み込み・status で知らせる)
 
+    -- 草薙剣モードが有効になった (on にした・装備した) ら、ルートの進行を取り消す
+    local kus_on = kusanagi_active()
+    local switched = false
+    if kus_on and (st.mode == 'custom' or st.mode == 'auto') then
+        cancel_all('草薙剣モードが有効になったので、ルートの進行を取り消しました。', 158)
+        switched = true
+    elseif not kus_on and (st.mode == 'kusanagi' or st.mode == 'kus_am') then
+        kus_reset('草薙剣を外した / 止めたので、追うのをやめます')
+        switched = true
+    end
+    -- 取り消したときは、この着弾を前の予約の確認 (confirm) として扱わない
+    -- 自分が送った技 (confirm だったもの) の着弾は、もう一方の新しい始点にもしない (上の sent_log と同じ考え方)
+    -- (confirm でない着弾 = 自分の手動の技・PT の技は、取り消したあとも従来どおり始点にしてよい)
+    if switched and confirm then return end
+
+    -- 草薙剣モード (侍が草薙剣を装備している間は、ルートの代わりにこちらが処理する)
+    if kus_on then
+        handle_kusanagi(act, ws_display_name, kind, confirm, my_target.id)
+        return
+    end
+
+
     if active_r.mode == 'custom' then
         handle_custom(active_r, act, ws_display_name, kind, confirm, my_target.id)
     else
@@ -1328,6 +1555,7 @@ windower.register_event('addon command', function(...)
             msg('  ・現在ステップ: Step ' .. st.step)
             msg('  ・基本待機秒数: ' .. delay_text(active_r))
             msg('==================================================')
+            if kusanagi_active() then msg(kusanagi_notice_text(), 158) end
         elseif tonumber(sub) then
             local route_id = tonumber(sub)
             local target_r = find_route(route_id)
@@ -1338,6 +1566,7 @@ windower.register_event('addon command', function(...)
                 msg('==================================================')
                 msg('連携ルート切り替え -> ルート ' .. route_id .. ': 【 ' .. (target_r.name or '') .. ' 】 に変更完了')
                 msg('==================================================')
+                if kusanagi_active() then msg(kusanagi_notice_text(), 158) end
             else
                 msg('ルート ' .. sub .. ' はありません (あるのは ' .. route_ids_text() .. ')。切り替えません。', 123)
             end
@@ -1360,6 +1589,17 @@ windower.register_event('addon command', function(...)
         config.save(settings)
         if not settings.enabled then cancel_all('全体機能を OFF にしたので、予約と進行を取り消しました。', 158) end
         msg('全体機能: ' .. (settings.enabled and '【ON】' or '【OFF】'))
+    elseif cmd == 'kusanagi' then
+        local sub = args[2] and args[2]:lower()
+        if sub == 'on' or sub == 'off' then
+            settings.kusanagi = (sub == 'on')
+            config.save(settings)
+            if sub == 'off' and (st.mode == 'kusanagi' or st.mode == 'kus_am') then cancel_all('[草薙剣] 草薙剣モードを OFF にしたので、追うのをやめます', 158) end
+            if sub == 'on' and (st.mode == 'custom' or st.mode == 'auto') and kusanagi_active() then
+                cancel_all('草薙剣モードが有効になったので、ルートの進行を取り消しました。', 158)
+            end
+        end
+        msg('草薙剣モード: ' .. (settings.kusanagi == true and '【ON】' or '【OFF】') .. ' (侍で草薙剣を装備中: 鳳蝶/轟天 → 無名を連携が続くかぎり。アフターマス無しなら無名で付ける)')
     elseif cmd == 'party' then
         settings.party_mode = not settings.party_mode
         config.save(settings)
@@ -1398,13 +1638,14 @@ windower.register_event('addon command', function(...)
         msg('  ・基本待機秒数: ' .. delay_text(active_r))
         msg('==================================================')
         if not active_r then notify_missing_route() end
+        if kusanagi_active() then msg(kusanagi_notice_text(), 158) end
     elseif cmd == 'reload' then
         -- 読み込み直すと、通算の上限・PT の始点だけの連続時間・送った技の記録も消える (仕様)
         windower.send_command('lua r AutoSkillchain')
     else
         msg('==================================================')
         msg('  [AutoSkillchain v' .. _addon.version .. '] コマンドヘルプ')
-        msg('  //sc focus on|off : 集中攻撃を連携より優先')
+        msg('  //sc focus on|off : 草薙剣を含め、集中攻撃を連携より優先')
         msg('--------------------------------------------------')
         msg('  //sc route <番号> : 連携ルートの切り替え (sc_routes.json にある番号)')
         msg('  //sc route        : 選択中のルートを表示')
@@ -1414,6 +1655,7 @@ windower.register_event('addon command', function(...)
         msg('  //sc start        : 止めたのを再開する (別名 on)')
         msg('  //sc reset        : 連携ステップの手動リセット (別名 clear / 予約も取り消す)')
         msg('  //sc toggle       : アドオン全体のON/OFF切り替え')
+        msg('  //sc kusanagi [on|off] : 草薙剣モードの状態表示・ON/OFF（既定OFF）')
         msg('  //sc party        : PT連携追撃のON/OFF切り替え')
         msg('  //sc solo         : 一人連携追撃のON/OFF切り替え')
         msg('  //sc delay <秒>   : 待機秒数をすべてのルートで上書き (1.0~8.0秒)')
@@ -1424,7 +1666,7 @@ windower.register_event('addon command', function(...)
     end
 end)
 
--- ゾーン移動・ログアウト・アンロード時に予約と進行を片付ける
+-- ゾーン移動・ログアウト・アンロード: 予約と進行 (草薙剣モードの TP 待ちを含む) を片付ける
 -- (予約が残ると、ゾーン移動後の別の敵へ <t> で撃つため)
 -- (送った技の記録と全自動の通算も消す)
 local function clear_all_records()
